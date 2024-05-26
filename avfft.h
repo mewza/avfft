@@ -6,13 +6,16 @@
 ***
 ***     It is based on AV MPEG AUDIO source code, so I am not really
 ***     going to officially claim any (C) to it, because I honestly,
-***     just put it together into an aeasy to use C++ templated class,
+***     just put it together into an aeasy to use C++ templated wrapper,
 ***     the great benefit I tested it, it works well with 32-bit and 64-bit
 ***     floating point single types or as a form of intrinsic SIMD vectors. 
 *** 
 ***     NOTE: This one unlike WDLFFT actually worked and produced a spectrum
 ***     I could recognize, I think WDL has some sort of bug in permutation
 ***     but AVFFT seems to be working in a more similar way to PFFFT.
+***     But I will also try to integrate this method:
+***      
+***     http://www.katjaas.nl/realFFT/realFFT2.html
 **/
 
 #include "const1.h"
