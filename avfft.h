@@ -1,7 +1,6 @@
 #pragma once
 
-/**
-***     AVFFT C++ Class written by Dmitry Boldyrev 
+/**     AVFFT C++ Class written by Dmitry Boldyrev 
 ***     GITHUB: https://github.com/mewza
 ***     Email: subband@protonmail.com
 ***
