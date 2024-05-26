@@ -1,5 +1,16 @@
 #pragma once
 
+/**     AVFFT v1.0 C++ wrapper class written by Dmitry Boldyrev 
+***     GITHUB: https://github.com/mewza
+***     Email: subband@protonmail.com
+***
+***     It is based on AV MPEG AUDIO source code, so I am not really
+***     going to officially claim any (C) to it, because I honestly,
+***     just put it together into an aeasy to use C++ templated wrapper,
+***     the great benefit I tested it, it works well with 32-bit and 64-bit
+***     floating point single types or as a form of intrinsic SIMD vectors. 
+**/
+
 static bool cos_tabs_init_once_initialized = false;
 
 typedef struct CosTabsInitOnce {
