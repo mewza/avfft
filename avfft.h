@@ -7,8 +7,8 @@
 ***     It is based on AV MPEG AUDIO source code, so I am not really
 ***     going to officially claim any (C) to it, because I honestly,
 ***     just put it together into an aeasy to use C++ templated class,
-***    the great benefit I tested it, it works well with 32-bit and 64-bit
-***    floating point single types or as a form of intrinsic SIMD vectors. 
+***     the great benefit I tested it, it works well with 32-bit and 64-bit
+***     floating point single types or as a form of intrinsic SIMD vectors. 
 *** 
 ***     NOTE: This one unlike WDLFFT actually worked and produced a spectrum
 ***     I could recognize, I think WDL has some sort of bug in permutation
