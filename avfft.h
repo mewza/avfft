@@ -1,5 +1,18 @@
 #pragma once
 
+/**
+***     AVFFT C++ Class written by Dmitry Boldyrev 
+***     GITHUB: https://github.com/mewza
+***     Email: subband@protonmail.com
+***
+***     It is based on AV MPEG AUDIO source code, so I am not really
+***     going to officially claim any (C) to it, because I honestly,
+***     just put it together into an aeasy to use C++ templated class.
+***     NOTE: This one unlike WDLFFT actually worked and produced a spectrum
+***     I could recognize, I think WDL has some sort of bug in permutation
+***     but AVFFT seems to be working in a more similar way to PFFFT.
+**/
+
 #include "const1.h"
 #include "avfft_tab.h"
 
