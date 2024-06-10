@@ -16,6 +16,8 @@
 ***     But I will also try to integrate this method:
 ***      
 ***     http://www.katjaas.nl/realFFT/realFFT2.html
+***    
+***     This is a much more robust version of AVFFT, so enjoy using it!
 **/
 
 typedef struct CosTabsInitOnce {
