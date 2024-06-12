@@ -1,4 +1,4 @@
-AVFFT v1.21 - Optimized templated SIMD-vector capable real/complex fft (forward and backward) transform.
+AVFFT v1.21 - Optimized templatable SIMD vector capable forward and reverse real/complex fft transform.
 
 This is a well tuned templated C++ real/complex implementation of FFT based on AV MPEG C version,
 it works well and I am using it actively in my current multimedia project. I think it is even a bit 
