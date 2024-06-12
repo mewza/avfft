@@ -26,7 +26,6 @@ typedef double zfloat;
 
 template <typename T>
 struct cmplxT {
-public:
     cmplxT(T r, T i) { re = r; im = i; }
     cmplxT(const cmplxT& v) {
         re = v.re; im = v.im;
