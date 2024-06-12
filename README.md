@@ -4,6 +4,6 @@ This is a fast and well tuned templated C++ real/complex implementation of FFT t
 AV MPEG C version. It works well and I am using it actively in my current multimedia project. 
 I think it is even a bit faster than PFFFT when used in simd vector mode, it sounds more precise 
 and sounds better than PFFFT to me at least. I have a very refined hearing, so I used this in a 
-IR convolver (Zita Convolver), and I could tell significant difference from PFFFT.
+IR convolver (Zita Convolver which I prefer over others), and I could tell significant difference from PFFFT.
 
 I tested it on iOS and OS X.
