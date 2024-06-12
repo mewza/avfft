@@ -1,6 +1,6 @@
 #pragma once
 
-/** AVFFT v1.2 C++ wrapper class written by Dmitry Boldyrev
+/** AVFFT v1.21 C++ wrapper class written by Dmitry Boldyrev
  **
  **  GITHUB: https://github.com/mewza
  **  Email: subband@protonmail.com
@@ -21,11 +21,50 @@
 
 typedef double zfloat;
 
+#ifndef D_CALLOCT
+#define D_CALLOCT
+
+#define MALLOC_ALIGNMENT 64
+
+static inline void *aligned_malloc( size_t nb_bytes )
+{
+    void *p, *p0 = malloc(nb_bytes + MALLOC_ALIGNMENT);
+    if (!p0) return (void *) 0;
+   
+    p = (void *) (((size_t) p0 + MALLOC_ALIGNMENT) & (~((size_t) (MALLOC_ALIGNMENT-1))));
+    *((void **) p - 1) = p0;
+   
+    return p;
+}
+
+static inline void aligned_free( void *p )
+{
+    if (p) free(*((void **) p - 1));
+}
+
+template <typename T>
+static inline T *callocT( int64_t k )
+{
+    T *p = (T*)aligned_malloc (k * sizeof(T));
+    if (!p)
+        return NULL;
+    memset (p, 0, k * sizeof (T));
+    return p;
+}
+
+static inline void callocT_free( void *p )
+{
+    aligned_free(p);
+}
+
+#endif // D_CALLOCT
+
 #ifndef D_CMPLXT
 #define D_CMPLXT
 
 template <typename T>
 struct cmplxT {
+public:
     cmplxT(T r, T i) { re = r; im = i; }
     cmplxT(const cmplxT& v) {
         re = v.re; im = v.im;
@@ -175,12 +214,10 @@ class AVFFT
     
 public:
     
-    AVFFT() :
-    ctx_fwd(this),
-    ctx_rev(this)
+    AVFFT() : fwd(this), rev(this)
     {
-        ctx_fwd.initialized = false;
-        ctx_rev.initialized = false;
+        fwd.initialized = false;
+        rev.initialized = false;
     }
     
     void real_fft(const T* in, T *out, int N, bool forward, bool scale = false)
@@ -265,22 +302,22 @@ public:
     void cmplx_fft(const cmplxT<T>* in, cmplxT<T>* out, int N, bool forward)
     {
         if (forward) {
-            if (!ctx_fwd.initialized) {
-                ctx_fwd.init(floorlog2(N), 0);
+            if (!fwd.initialized) {
+                fwd.init(floorlog2(N), 0);
             }
             memcpy(out, in, sizeof(cmplxT<T>)*N);
             
-            ctx_fwd.permute(out);
-            ctx_fwd.calc(out);
+            fwd.permute(out);
+            fwd.calc(out);
         } else {
-            if (!ctx_rev.initialized) {
-                ctx_rev.init(floorlog2(N), 1);
+            if (!rev.initialized) {
+                rev.init(floorlog2(N), 1);
             }
             
             memcpy(out, in, sizeof(cmplxT<T>)*N);
             
-            ctx_rev.permute(out);
-            ctx_rev.calc(out);
+            rev.permute(out);
+            rev.calc(out);
         }
     }
    
@@ -394,15 +431,15 @@ protected:
             n = 1 << nbits;
 
             if (nbits <= 16) {
-                revtab = (uint16_t*)malloc(n * sizeof(uint16_t));
+                revtab = (uint16_t*)aligned_malloc(n * sizeof(uint16_t));
                 if (!revtab)
                     goto fail;
             } else {
-                revtab32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+                revtab32 = (uint32_t*)aligned_malloc(n * sizeof(uint32_t));
                 if (!revtab32)
                     goto fail;
             }
-            tmp_buf = (FFTComplex*)malloc(n * sizeof(FFTComplex));
+            tmp_buf = (FFTComplex*)aligned_malloc(n * sizeof(FFTComplex));
             if (!tmp_buf)
                 goto fail;
             inverse = inv;
@@ -452,11 +489,11 @@ protected:
             initialized = true;
             return 0;
          fail:
-            if (revtab) free(revtab);
+            if (revtab) aligned_free(revtab);
             revtab = NULL;
-            if (revtab32) free(revtab32);
+            if (revtab32) aligned_free(revtab32);
             revtab32 = NULL;
-            if (tmp_buf) free(tmp_buf);
+            if (tmp_buf) aligned_free(tmp_buf);
             tmp_buf = NULL;
             return -1;
         }
@@ -636,9 +673,10 @@ static void fft##n(FFTComplex *z)\
 
 protected:
     
-    FFTContext  ctx_fwd;
-    FFTContext  ctx_rev;
+    FFTContext  fwd, rev;
   
 };
+
+
 
 
