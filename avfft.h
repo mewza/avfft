@@ -1,6 +1,6 @@
 #pragma once
 
-/**     AVFFT v1.11 C++ wrapper class written by Dmitry Boldyrev 
+/**     AVFFT v1.12 C++ wrapper class written by Dmitry Boldyrev 
 ***     GITHUB: https://github.com/mewza
 ***     Email: subband@protonmail.com
 ***
@@ -19,8 +19,6 @@
 ***    
 ***     This is a much more robust version of AVFFT, so enjoy using it!
 **/
-
-#pragma once
 
 typedef struct CosTabsInitOnce {
     void (*func)(void);
@@ -153,84 +151,140 @@ public:
     
     void real_fft(const T* in, T *out, int N, bool forward, bool scale = false)
     {
-        T fft[N*2];
-        T h1r, h1i, h2r, h2i, wr, wi, temp;
-        zfloat c1, c2, wpr, wpi, theta;
-        T xr, xi;
-        int i, i1, i2, i3, i4, N2p1;
+        cmplxT<T> fft[N], x, h1, h2;
+        zfloat tmp, c2, theta, scv = 1.;
+        cmplxT<zfloat> wp, w;
+        const zfloat c1 = 0.5;
+        
+        w = cmplxT<zfloat>(1,0);
+        theta = M_PI / (zfloat)N;
+        
+        if (forward)  // forward fft
+        {
+            zfloat scv = 1.;
+            if (scale) scv = 1./(zfloat)N;
+            
+            for (int i=0; i<N; i++) {
+                fft[i] = cmplxT<T>(in[i] * scv, 0.0);
+            }
+            cmplx_fft(fft, fft, N, forward);
+            c2 = -0.5;
+            x = fft[0];
+        } else  // reverse fft
+        {
+            memcpy(fft, in, sizeof(cmplxT<T>) * N);
+            c2 = 0.5;
+            theta = -theta;
+            x = cmplxT<T>(fft[0].im, 0);
+            fft[0].im = 0;
+        }
+        const zfloat xx = sin(0.5*theta);
+        wp = cmplxT<zfloat>(-2. * xx * xx, sin(theta));
+        
+        for (int i=0; i <= N/2; i++) {
+            int ir = N-i;
+            if (i) {
+                h1 = cmplxT<T>( fft[i].re + fft[ir].re, fft[i].im - fft[ir].im) * c1;
+                h2 = cmplxT<T>(-fft[i].im - fft[ir].im, fft[i].re - fft[ir].re) * c2;
+                fft[i] =  cmplxT<T>(h1.re + w.re * h2.re - w.im * h2.im,  h1.im + w.re * h2.im + w.im * h2.re);
+                fft[ir] = cmplxT<T>(h1.re - w.re * h2.re + w.im * h2.im, -h1.im + w.re * h2.im + w.im * h2.re);
+            } else {
+                h1 = cmplxT<T>( fft[i].re + x.re, fft[i].im - x.im) * c1;
+                h2 = cmplxT<T>(-fft[i].im - x.im, fft[i].re - x.re) * c2;
+                fft[i] = cmplxT<T>(h1.re + w.re * h2.re - w.im * h2.im,  h1.im + w.re * h2.im + w.im * h2.re);
+                x      = cmplxT<T>(h1.re - w.re * h2.re - w.im * h2.im, -h1.im + w.re * h2.im + w.im * h2.re);
+            }
+            w.re = (tmp = w.re) * wp.re - w.im * wp.im + w.re;
+            w.im = w.im * wp.re + tmp * wp.im + w.im;
+        }
+        
+        if (forward) { // forward fft
+            fft[0].im = x.re;
+            memcpy(out, fft, sizeof(cmplxT<T>)*N);
+        } else
+        { // reverse fft
+            cmplx_fft(fft, fft, N, forward);
+            if (scale) scv = 1./(zfloat)N;
+            for (int i=0; i<N; i++)
+                out[i] = fft[i].re * scv;
+        }
+    }
+    
+    void real_fft2(const T* in, T *out, int N, bool forward, bool scale = false)
+    {
+        cmplxT<T> fft[N+1];
+        T temp;
+        zfloat c2, theta;
+        const zfloat c1 = 0.5;
+        const int N2p1 = N + 1;
+        cmplxT<T> x, w, h2, wp, h1;
+        int i, ir;
         
         theta = M_PI / (zfloat)N;
-        wr = 1.;
-        wi = 0.;
-        c1 = 0.5;
+        w = cmplxT<T>(1.,0.);
         
         if (forward)  // forward
         {
             zfloat scv = 1.;
             if (scale) scv = 1./(zfloat)N;
             
-            for (int i=0,i2=0; i<N; i++,i2+=2)
+            for (int i=0; i<N; i++)
             {
-                fft[i2] = in[i] * scv;
-                fft[i2+1] = 0.0;
+                fft[i].re = in[i] * scv;
+                fft[i].im = 0.0;
             }
             cmplx_fft((cmplxT<T>*)fft, (cmplxT<T>*)fft, N, forward);
             c2 = -0.5;
-            xr = fft[0];
-            xi = fft[1];
+            x = fft[0];
         } else  // reverse
         {
             memcpy(fft, in, sizeof(T) * 2 * N);
             c2 = 0.5;
             theta = -theta;
-            xr = fft[1];
-            xi = 0.;
-            fft[1] = 0.;
+            x.re = fft[0].im;
+            x.im = 0.0;
+            fft[0].im = 0.;
         }
         zfloat xx = sin(0.5*theta);
-        wpr = -2. * xx * xx;
-        wpi = sin(theta);
-        
-        N2p1 = (N << 1) + 1;
+        wp = cmplxT<T>(-2. * xx * xx, sin(theta));
         
         for (i = 0; i <= N/2; i++) {
-            i1 = i * 2;
-            i2 = i1 + 1;
-            i3 = N2p1 - i2;
-            i4 = i3 + 1;
+          //  i1 = i;
+           // i2 = i1 + 1;
+            ir = N2p1 - i;
+          //  i3 = N2p1 - i;
+          //  i4 = i3 + 1;
             if (i == 0) {
-                h1r =  c1*(fft[i1] + xr);
-                h1i =  c1*(fft[i2] - xi);
-                h2r = -c2*(fft[i2] + xi);
-                h2i =  c2*(fft[i1] - xr);
-                fft[i1] = h1r + wr*h2r - wi*h2i;
-                fft[i2] = h1i + wr*h2i + wi*h2r;
-                xr =  h1r - wr*h2r - wi*h2i;
-                xi = -h1i + wr*h2i + wi*h2r;
+                h1.re =  c1*(fft[i].re + x.re);
+                h1.im =  c1*(fft[i].im - x.im);
+                h2.re = -c2*(fft[i].im + x.im);
+                h2.im =  c2*(fft[i].re - x.re);
+                fft[i].re = h1.re + w.re * h2.re - w.im * h2.im;
+                fft[i].im = h1.im + w.re * h2.im + w.im * h2.re;
+                x = cmplxT<T>(h1.re - w.re * h2.re - w.im * h2.im, -h1.im + w.re * h2.im + w.im * h2.re);
             } else {
-                h1r = c1*(fft[i1] + fft[i3]);
-                h1i = c1*(fft[i2] - fft[i4]);
-                h2r = -c2*(fft[i2] + fft[i4]);
-                h2i = c2*(fft[i1] - fft[i3]);
-                fft[i1] = h1r + wr*h2r - wi*h2i;
-                fft[i2] = h1i + wr*h2i + wi*h2r;
-                fft[i3] = h1r - wr*h2r + wi*h2i;
-                fft[i4] = -h1i + wr*h2i + wi*h2r;
+                h1.re =  c1*(fft[i].re + fft[ir].re);
+                h1.im =  c1*(fft[i].im - fft[ir].im);
+                h2.re = -c2*(fft[i].im + fft[ir].im);
+                h2.im =  c2*(fft[i].re - fft[ir].re);
+                fft[i].re  =  h1.re + w.re * h2.re - w.im * h2.im;
+                fft[i].im  =  h1.im + w.re * h2.im + w.im * h2.re;
+                fft[ir].re =  h1.re - w.re * h2.re + w.im * h2.im;
+                fft[ir].im = -h1.im + w.re * h2.im + w.im * h2.re;
             }
-            
-            wr = (temp = wr)*wpr - wi*wpi + wr;
-            wi = wi*wpr + temp*wpi + wi;
+            w.re = (temp = w.re) * wp.re - w.im * wp.im + w.re;
+            w.im = w.im * wp.re + temp * wp.im + w.im;
         }
         
         if (forward) {
-            fft[1] = xr;
+            fft[0].im = x.re;
             memcpy(out, fft, sizeof(cmplxT<T>)*N);
         } else {
             cmplx_fft((cmplxT<T>*)fft, (cmplxT<T>*)fft, N, forward);
             zfloat scv = 1.;
             if (scale) scv = 1./(zfloat)N;
             for (int i=0; i<N; i++)
-                out[i] = fft[i*2] * scv;
+                out[i] = fft[i].re * scv;
             // if constexpr( std::is_same_v<T, zfloat> )
             //   PRINT_D1( out[10] );
         }
@@ -255,8 +309,6 @@ public:
 
     void cmplx_fft(const cmplxT<T>* in, cmplxT<T>* out, int N, bool forward)
     {
-        T fft[N*2];
-        
         if (forward) {
             if (!ctx_fwd.initialized) {
                 ctx_fwd.init(floorlog2(N), 0);
