@@ -1,19 +1,20 @@
 #pragma once
 
-/**     AVFFT v1.2 C++ wrapper class written by Dmitry Boldyrev 
-***     GITHUB: https://github.com/mewza
-***     Email: subband@protonmail.com
-***
-***     This FFT wrapper is based on AV MPEG AUDIO source code, so I am not really
-***     going to officially claim any (C) to it, because I honestly,
-***     just put it together into an aeasy to use C++ templated wrapper,
-***     the great benefit I tested it, it works well with 32-bit and 64-bit
-***     floating point single types or as a form of intrinsic SIMD vectors.
-***
-***     Now includes cmplxT class, sorry forgot to include before.
-*** 
-***     This is a much more robust version of older AVFFT, enjoy using it!
-**/
+/** AVFFT v1.2 C++ wrapper class written by Dmitry Boldyrev
+ **
+ **  GITHUB: https://github.com/mewza
+ **  Email: subband@protonmail.com
+ **
+ **  This FFT wrapper is based on AV MPEG AUDIO source code, so I am not really
+ **  going to officially claim any (C) to it, because I honestly,
+ **  just put it together into an aeasy to use C++ templated wrapper,
+ **  the great benefit I tested it, it works well with 32-bit and 64-bit
+ **  floating point single types or as a form of intrinsic SIMD vectors.
+ **
+ **  Now includes cmplxT class, sorry forgot to include before.
+ **
+ **  This is a much more robust version of older AVFFT, enjoy using it!
+ **/
 
 #ifndef D_CMPLXT
 #define D_CMPLXT
