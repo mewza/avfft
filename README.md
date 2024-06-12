@@ -6,7 +6,7 @@ I think it is even a bit faster than PFFFT when used in simd vector mode, it sou
 and sounds better than PFFFT to me at least. I have a very refined hearing, so I used this in a 
 IR convolver (Zita Convolver which I prefer over others), and I could tell significant improvement
 from PFFFT drop-replace by AVFFT. I am trying to make a vectorized version of Zita Convolver using
-this AVFFT, I think it should signnificantly improve the performance of Zita, from the serialized
-version which I used with PFFFT.
+this AVFFT, I think it should significantly improve the performance of Zita Convolver by SIMD vectorization, 
+from the serialized version with PFFFT.
 
 I tested it on iOS and OS X.
