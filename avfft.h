@@ -16,6 +16,11 @@
  **  This is a much more robust version of older AVFFT, enjoy using it!
  **/
 
+// you can configure FFT to run as float or double 
+// preicison floating point (default = double)
+
+typedef double zfloat;
+
 #ifndef D_CMPLXT
 #define D_CMPLXT
 
