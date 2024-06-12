@@ -1,6 +1,6 @@
 #pragma once
 
-/**     AVFFT v1.12 C++ wrapper class written by Dmitry Boldyrev 
+/**     AVFFT v1.2 C++ wrapper class written by Dmitry Boldyrev 
 ***     GITHUB: https://github.com/mewza
 ***     Email: subband@protonmail.com
 ***
@@ -8,17 +8,46 @@
 ***     going to officially claim any (C) to it, because I honestly,
 ***     just put it together into an aeasy to use C++ templated wrapper,
 ***     the great benefit I tested it, it works well with 32-bit and 64-bit
-***     floating point single types or as a form of intrinsic SIMD vectors. 
+***     floating point single types or as a form of intrinsic SIMD vectors.
+***
+***     Now includes cmplxT class, sorry forgot to include before.
 *** 
-***     NOTE: This one unlike WDLFFT actually worked and produced a spectrum
-***     I could recognize, I think WDL has some sort of bug in permutation
-***     but AVFFT seems to be working in a more similar way to PFFFT.
-***     But I will also try to integrate this method:
-***      
-***     http://www.katjaas.nl/realFFT/realFFT2.html
-***    
-***     This is a much more robust version of AVFFT, so enjoy using it!
+***     This is a much more robust version of older AVFFT, enjoy using it!
 **/
+
+#ifndef D_CMPLXT
+#define D_CMPLXT
+
+template <typename T>
+struct cmplxT {
+public:
+    cmplxT(T r, T i) { re = r; im = i; }
+    cmplxT(const cmplxT& v) {
+        re = v.re; im = v.im;
+    }
+    cmplxT(long double v) {
+        re = v; im = v;
+    }
+    cmplxT() { re = 0.0; im = 0.0; }
+    T mag() const {
+        return F_SQRT(re * re + im * im);
+    }
+    
+    inline cmplxT<T> operator * (const double d) {
+        return cmplxT(re * d, im * d);
+    }
+    inline constexpr cmplxT<T> operator *= (long double d) const {
+        return cmplxT(re * d, im * d);
+    }
+    inline constexpr cmplxT<T>& operator += (const cmplxT<T>& d) {
+        return cmplxT(re + d.re, im + d.im);
+    }
+    T re;
+    T im;
+};
+//__attribute__((packed));
+
+#endif // D_CMPLXT
 
 typedef struct CosTabsInitOnce {
     void (*func)(void);
@@ -151,7 +180,8 @@ public:
     
     void real_fft(const T* in, T *out, int N, bool forward, bool scale = false)
     {
-        cmplxT<T> fft[N], x, h1, h2;
+        alignas(64) cmplxT<T> fft[N];
+        cmplxT<T> x, h1, h2;
         zfloat tmp, c2, theta, scv = 1.;
         cmplxT<zfloat> wp, w;
         const zfloat c1 = 0.5;
@@ -605,4 +635,5 @@ protected:
     FFTContext  ctx_rev;
   
 };
+
 
