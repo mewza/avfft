@@ -16,7 +16,7 @@
  **  This is a much more robust version of older AVFFT, enjoy using it!
  **/
 
-// you can configure FFT to run as float or double 
+// you can configure FFT to run as float or double by changing zfloat
 // preicison floating point (default = double)
 
 typedef double zfloat;
