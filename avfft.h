@@ -1,6 +1,6 @@
 #pragma once
 
-/**     AVFFT v1.1 C++ wrapper class written by Dmitry Boldyrev 
+/**     AVFFT v1.11 C++ wrapper class written by Dmitry Boldyrev 
 ***     GITHUB: https://github.com/mewza
 ***     Email: subband@protonmail.com
 ***
@@ -19,6 +19,8 @@
 ***    
 ***     This is a much more robust version of AVFFT, so enjoy using it!
 **/
+
+#pragma once
 
 typedef struct CosTabsInitOnce {
     void (*func)(void);
@@ -123,6 +125,13 @@ static CosTabsInitOnce cos_tabs_init_once[18] = {
     { init_ff_cos_tabs_131072, false },
 };
 
+static void ff_init_ff_cos_tabs(int index)
+{
+    if (!cos_tabs_init_once[index].control) {
+        cos_tabs_init_once[index].func();
+        cos_tabs_init_once[index].control = true;
+    }
+}
 
 template <typename T>
 class AVFFT
@@ -131,18 +140,18 @@ class AVFFT
         return (x == 1) ? 0 : 1 + floorlog2(x >> 1);
     }
     typedef cmplxT<T> FFTComplex;
-
+    
 public:
     
     AVFFT() :
-        ctx_fwd(this),
-        ctx_rev(this)
+    ctx_fwd(this),
+    ctx_rev(this)
     {
         ctx_fwd.initialized = false;
         ctx_rev.initialized = false;
     }
     
-    void real_fft(const T* in, T *out, int N, bool forward)
+    void real_fft(const T* in, T *out, int N, bool forward, bool scale = false)
     {
         T fft[N*2];
         T h1r, h1i, h2r, h2i, wr, wi, temp;
@@ -157,10 +166,12 @@ public:
         
         if (forward)  // forward
         {
-            for (int i=0; i<N; i++)
+            zfloat scv = 1.;
+            if (scale) scv = 1./(zfloat)N;
+            
+            for (int i=0,i2=0; i<N; i++,i2+=2)
             {
-                int i2 = i<<1;
-                fft[i2] = in[i];
+                fft[i2] = in[i] * scv;
                 fft[i2+1] = 0.0;
             }
             cmplx_fft((cmplxT<T>*)fft, (cmplxT<T>*)fft, N, forward);
@@ -176,9 +187,9 @@ public:
             xi = 0.;
             fft[1] = 0.;
         }
-        zfloat xx = F_SIN(0.5*theta);
+        zfloat xx = sin(0.5*theta);
         wpr = -2. * xx * xx;
-        wpi = F_SIN(theta);
+        wpi = sin(theta);
         
         N2p1 = (N << 1) + 1;
         
@@ -215,13 +226,16 @@ public:
             fft[1] = xr;
             memcpy(out, fft, sizeof(cmplxT<T>)*N);
         } else {
-           cmplx_fft((cmplxT<T>*)fft, (cmplxT<T>*)fft, N, forward);
+            cmplx_fft((cmplxT<T>*)fft, (cmplxT<T>*)fft, N, forward);
+            zfloat scv = 1.;
+            if (scale) scv = 1./(zfloat)N;
             for (int i=0; i<N; i++)
-                out[i] = fft[i*2];
+                out[i] = fft[i*2] * scv;
+            // if constexpr( std::is_same_v<T, zfloat> )
+            //   PRINT_D1( out[10] );
         }
-        
     }
-
+    
     void bit_reverse(T* x, int N)
     {
         T rtemp, itemp;
@@ -236,50 +250,6 @@ public:
             
             for (m = N >> 1; m >= 2 && j >= m; m >>= 1)
                 j -= m;
-        }
-    }
-
-    
-    void cfft(T *out, int NC, bool forward) 
-    {
-        zfloat scale, wpr, wpi, theta;
-        T wr, wi;;
-        int mmax, ND, m, i, j, delta;
-        
-        ND = NC << 1;
-        
-        bit_reverse(out, ND);
-
-        for (mmax=2; mmax < ND; mmax = delta)
-        {
-            delta = mmax << 1;
-            theta = 2.*M_PI / (zfloat)(forward ? mmax : -mmax);
-            wpr = -2.*F_POW(F_SIN(.5*theta), 2.);
-            wpi = F_SIN(theta);
-            wr = 1.;
-            wi = 0.;
-            
-            for (m = 0; m < mmax; m += 2) {
-                T rtemp, itemp;
-                for (i = m; i < ND; i += delta) {
-                    j = i + mmax;
-                    rtemp = wr*out[j] - wi*out[j + 1];
-                    itemp = wr*out[j + 1] + wi*out[j];
-                    out[j] = out[i] - rtemp;
-                    out[j + 1] = out[i + 1] - itemp;
-                    out[i] += rtemp;
-                    out[i + 1] += itemp;
-                }
-                wr = (rtemp = wr) * wpr - wi*wpi + wr;
-                wi = wi*wpr + rtemp*wpi + wi;
-            }
-        }
-
-        // scale output
-        scale = (forward ? 1. / (zfloat)ND : 2.);
-        {
-            T * xi = out, *xe = out + ND;
-            while (xi < xe) *xi++ *= scale;
         }
     }
 
@@ -307,16 +277,7 @@ public:
         }
     }
    
-    
 protected:
-    
-    static void ff_init_ff_cos_tabs(int index)
-    {
-        if (!cos_tabs_init_once[index].control) {
-            cos_tabs_init_once[index].func();
-            cos_tabs_init_once[index].control = true;
-        }
-    }
     
     enum fft_permutation_type {
         FF_FFT_PERM_DEFAULT,
@@ -445,43 +406,42 @@ protected:
                 ff_init_ff_cos_tabs(j);
             }
 
+#define PROCESS_FFT_PERM_SWAP_LSBS(num) do {\
+    for(i = 0; i < n; i++) {\
+        int k;\
+        j = i;\
+        j = (j & ~3) | ((j >> 1) & 1) | ((j << 1) & 2);\
+        k = -split_radix_permutation(i, n, inverse) & (n - 1);\
+        revtab##num[k] = j;\
+    } \
+} while(0);
 
-        #define PROCESS_FFT_PERM_SWAP_LSBS(num) do {\
-            for(i = 0; i < n; i++) {\
-                int k;\
-                j = i;\
-                j = (j & ~3) | ((j >> 1) & 1) | ((j << 1) & 2);\
-                k = -split_radix_permutation(i, n, inverse) & (n - 1);\
-                revtab##num[k] = j;\
-            } \
-        } while(0);
+#define PROCESS_FFT_PERM_DEFAULT(num) do {\
+    for(i = 0; i < n; i++) {\
+        int k;\
+        j = i;\
+        k = -split_radix_permutation(i, n, inverse) & (n - 1);\
+        revtab##num[k] = j;\
+    } \
+} while(0);
 
-        #define PROCESS_FFT_PERM_DEFAULT(num) do {\
-            for(i = 0; i < n; i++) {\
-                int k;\
-                j = i;\
-                k = -split_radix_permutation(i, n, inverse) & (n - 1);\
-                revtab##num[k] = j;\
-            } \
-        } while(0);
-
-        #define SPLIT_RADIX_PERMUTATION(num) do { \
-            if (fft_permutation == FF_FFT_PERM_SWAP_LSBS) {\
-                PROCESS_FFT_PERM_SWAP_LSBS(num) \
-            } else {\
-                PROCESS_FFT_PERM_DEFAULT(num) \
-            }\
-        } while(0);
+#define SPLIT_RADIX_PERMUTATION(num) do { \
+    if (fft_permutation == FF_FFT_PERM_SWAP_LSBS) {\
+        PROCESS_FFT_PERM_SWAP_LSBS(num) \
+    } else {\
+        PROCESS_FFT_PERM_DEFAULT(num) \
+    }\
+} while(0);
 
             if (revtab)
                 SPLIT_RADIX_PERMUTATION()
             if (revtab32)
                 SPLIT_RADIX_PERMUTATION(32)
 
-        #undef PROCESS_FFT_PERM_DEFAULT
-        #undef PROCESS_FFT_PERM_SWAP_LSBS
-        #undef SPLIT_RADIX_PERMUTATION
-            
+#undef PROCESS_FFT_PERM_DEFAULT
+#undef PROCESS_FFT_PERM_SWAP_LSBS
+#undef SPLIT_RADIX_PERMUTATION
+
             initialized = true;
             return 0;
          fail:
@@ -506,8 +466,8 @@ protected:
             } else
                 for(j=0;j<np;j++) tmp_buf[rt32[j]] = z[j];
 
-            for(j=0;j<np;j++) z[j] = tmp_buf[j];
-    //        memcpy(z, tmp_buf, np * sizeof(FFTComplex));
+           // for(j=0;j<np;j++) z[j] = tmp_buf[j];
+            memcpy(z, tmp_buf, np * sizeof(FFTComplex));
         }
         
         void calc(FFTComplex *z)
@@ -522,81 +482,81 @@ protected:
         };
 
 
-        #define BF(x, y, a, b) \
-            x = a - b; \
-            y = a + b;
+#define BF(x, y, a, b) \
+    x = a - b; \
+    y = a + b;
 
-        #define BUTTERFLIES(a0,a1,a2,a3) {\
-            BF(t3, t5, t5, t1);\
-            BF(a2.re, a0.re, a0.re, t5);\
-            BF(a3.im, a1.im, a1.im, t3);\
-            BF(t4, t6, t2, t6);\
-            BF(a3.re, a1.re, a1.re, t4);\
-            BF(a2.im, a0.im, a0.im, t6);\
-        }
+#define BUTTERFLIES(a0,a1,a2,a3) {\
+    BF(t3, t5, t5, t1);\
+    BF(a2.re, a0.re, a0.re, t5);\
+    BF(a3.im, a1.im, a1.im, t3);\
+    BF(t4, t6, t2, t6);\
+    BF(a3.re, a1.re, a1.re, t4);\
+    BF(a2.im, a0.im, a0.im, t6);\
+}
 
-        // force loading all the inputs before storing any.
-        // this is slightly slower for small data, but avoids store->load aliasing
-        // for addresses separated by large powers of 2.
-        #define BUTTERFLIES_BIG(a0,a1,a2,a3) {\
-            T r0=a0.re, i0=a0.im, r1=a1.re, i1=a1.im;\
-            BF(t3, t5, t5, t1);\
-            BF(a2.re, a0.re, r0, t5);\
-            BF(a3.im, a1.im, i1, t3);\
-            BF(t4, t6, t2, t6);\
-            BF(a3.re, a1.re, r1, t4);\
-            BF(a2.im, a0.im, i0, t6);\
-        }
+// force loading all the inputs before storing any.
+// this is slightly slower for small data, but avoids store->load aliasing
+// for addresses separated by large powers of 2.
+#define BUTTERFLIES_BIG(a0,a1,a2,a3) {\
+    T r0=a0.re, i0=a0.im, r1=a1.re, i1=a1.im;\
+    BF(t3, t5, t5, t1);\
+    BF(a2.re, a0.re, r0, t5);\
+    BF(a3.im, a1.im, i1, t3);\
+    BF(t4, t6, t2, t6);\
+    BF(a3.re, a1.re, r1, t4);\
+    BF(a2.im, a0.im, i0, t6);\
+}
 
-        #define TRANSFORM(a0,a1,a2,a3,wre,wim) {\
-            CMUL(t1, t2, a2.re, a2.im, wre, -wim);\
-            CMUL(t5, t6, a3.re, a3.im, wre,  wim);\
-            BUTTERFLIES(a0,a1,a2,a3)\
-        }
+#define TRANSFORM(a0,a1,a2,a3,wre,wim) {\
+    CMUL(t1, t2, a2.re, a2.im, wre, -wim);\
+    CMUL(t5, t6, a3.re, a3.im, wre,  wim);\
+    BUTTERFLIES(a0,a1,a2,a3)\
+}
 
-        #define TRANSFORM_ZERO(a0,a1,a2,a3) {\
-            t1 = a2.re;\
-            t2 = a2.im;\
-            t5 = a3.re;\
-            t6 = a3.im;\
-            BUTTERFLIES(a0,a1,a2,a3)\
-        }
+#define TRANSFORM_ZERO(a0,a1,a2,a3) {\
+    t1 = a2.re;\
+    t2 = a2.im;\
+    t5 = a3.re;\
+    t6 = a3.im;\
+    BUTTERFLIES(a0,a1,a2,a3)\
+}
 
-        /* z[0...8n-1], w[1...2n-1] */
-        #define PASS(name)\
-        static void name(FFTComplex *z, const double *wre, unsigned int n)\
-        {\
-            T t1, t2, t3, t4, t5, t6;\
-            int o1 = 2*n;\
-            int o2 = 4*n;\
-            int o3 = 6*n;\
-            const double *wim = wre+o1;\
-            n--;\
-        \
-            TRANSFORM_ZERO(z[0],z[o1],z[o2],z[o3]);\
-            TRANSFORM(z[1],z[o1+1],z[o2+1],z[o3+1],wre[1],wim[-1]);\
-            do {\
-                z += 2;\
-                wre += 2;\
-                wim -= 2;\
-                TRANSFORM(z[0],z[o1],z[o2],z[o3],wre[0],wim[0]);\
-                TRANSFORM(z[1],z[o1+1],z[o2+1],z[o3+1],wre[1],wim[-1]);\
-            } while(--n);\
-        }
+/* z[0...8n-1], w[1...2n-1] */
+#define PASS(name)\
+static void name(FFTComplex *z, const double *wre, unsigned int n)\
+{\
+    T t1, t2, t3, t4, t5, t6;\
+    int o1 = 2*n;\
+    int o2 = 4*n;\
+    int o3 = 6*n;\
+    const double *wim = wre+o1;\
+    n--;\
+\
+    TRANSFORM_ZERO(z[0],z[o1],z[o2],z[o3]);\
+    TRANSFORM(z[1],z[o1+1],z[o2+1],z[o3+1],wre[1],wim[-1]);\
+    do {\
+        z += 2;\
+        wre += 2;\
+        wim -= 2;\
+        TRANSFORM(z[0],z[o1],z[o2],z[o3],wre[0],wim[0]);\
+        TRANSFORM(z[1],z[o1+1],z[o2+1],z[o3+1],wre[1],wim[-1]);\
+    } while(--n);\
+}
 
         PASS(pass)
-        #undef BUTTERFLIES
-        #define BUTTERFLIES BUTTERFLIES_BIG
+#undef BUTTERFLIES
+#define BUTTERFLIES BUTTERFLIES_BIG
         PASS(pass_big)
 
-        #define DECL_FFT(n,n2,n4)\
-        static void fft##n(FFTComplex *z)\
-        {\
-            fft##n2(z);\
-            fft##n4(z+n4*2);\
-            fft##n4(z+n4*3);\
-            pass(z,ff_cos_##n,n4/2);\
-        }
+#define DECL_FFT(n,n2,n4)\
+static void fft##n(FFTComplex *z)\
+{\
+    fft##n2(z);\
+    fft##n4(z+n4*2);\
+    fft##n4(z+n4*3);\
+    pass(z,ff_cos_##n,n4/2);\
+}
       
         static void fft4(FFTComplex *z)
         {
