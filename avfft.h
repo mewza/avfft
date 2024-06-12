@@ -222,7 +222,7 @@ public:
     
     void real_fft(const T* in, T *out, int N, bool forward, bool scale = false)
     {
-        alignas(64) cmplxT<T> fft[N];
+        alignas(MALLOC_ALIGNMENT) cmplxT<T> fft[N];
         cmplxT<T> x, h1, h2;
         zfloat tmp, c2, theta, scv = 1.;
         cmplxT<zfloat> wp, w;
