@@ -1,6 +1,6 @@
 #pragma once
 
-/** AVFFT v1.21 C++ wrapper class written by Dmitry Boldyrev
+/** AVFFT v1.3 C++ wrapper class written by Dmitry Boldyrev
  **
  **  GITHUB: https://github.com/mewza
  **  Email: subband@protonmail.com
@@ -11,13 +11,46 @@
  **  the great benefit I tested it, it works well with 32-bit and 64-bit
  **  floating point single types or as a form of intrinsic SIMD vectors.
  **
- **  Now includes cmplxT class, sorry forgot to include before.
+ **  This is a much more robust version of AVFFT class. I made it 100% compatible
+ **  with PFFFT, so you can just drop replace it and it will produce almost identical output,
+ **  plus the intrinsic vector support via template T parameter.
  **
- **  This is a much more robust version of older AVFFT, enjoy using it!
+ **  I would appreciate credits in the app if you use this fancy c++ wrapper, and I might try to
+ **  add assembler optimizations next.
  **/
 
 // you can configure FFT to run as float or double by changing zfloat
 // preicison floating point (default = double)
+
+// for intrinsic vector support on iOS SDK uncomment
+//#define SUPPORT_IVECTOR
+
+#ifdef SUPPORT_IVECTOR
+#include <simd/simd.h>
+
+typedef simd_double2 zfloat2;
+typedef simd_double4 zfloat4;
+typedef simd_double8 zfloat8;
+
+typedef simd_float2 float2v;
+typedef simd_float4 float4v;
+typedef simd_float8 float8v;
+
+typedef simd_double2 double2v;
+typedef simd_double4 double4v;
+typedef simd_double8 double8v;
+
+static __inline float8v F_SQRT(float8v s) { return simd::sqrt(s); }
+static __inline double8v F_SQRT(double8v s) { return simd::sqrt(s); }
+static __inline float4v F_SQRT(float4v s) { return simd::sqrt(s); }
+static __inline double4v F_SQRT(double4v s) { return simd::sqrt(s); }
+static __inline float2v F_SQRT(float2v s) { return simd::sqrt(s); }
+static __inline double2v F_SQRT(double2v s) { return simd::sqrt(s); }
+static __inline double F_SQRT(double s) { return __builtin_sqrt(s); }
+static __inline float F_SQRT(float s) { return __builtin_sqrt(s); }
+
+#endif // SUPPORT_IVECTOR
+
 
 typedef double zfloat;
 
@@ -99,7 +132,7 @@ typedef struct CosTabsInitOnce {
 } CosTabsInitOnce;
 
 #define DECLARE_ALIGNED(n,t,v) t __attribute__ ((aligned (n))) v
-#define COSTABLE(size) static DECLARE_ALIGNED(32, double, ff_cos_##size)[size/2]
+#define COSTABLE(size) static DECLARE_ALIGNED(32, zfloat, ff_cos_##size)[size/2]
 
 /* cos(2*pi*x/n) for 0<=x<=n/4, followed by its reverse */
 
@@ -118,7 +151,7 @@ COSTABLE(32768);
 COSTABLE(65536);
 COSTABLE(131072);
 
-static constexpr double * ff_cos_tabs[18] = {
+static constexpr zfloat * ff_cos_tabs[18] = {
     NULL, NULL, NULL, NULL,
     ff_cos_16,
     ff_cos_32,
@@ -135,19 +168,12 @@ static constexpr double * ff_cos_tabs[18] = {
     ff_cos_65536,
     ff_cos_131072,
 };
-#define _sqrthalf   M_SQRT1_2
-
-#define CMUL(dre, dim, are, aim, bre, bim) do { \
-    (dre) = (are) * (bre) - (aim) * (bim);  \
-    (dim) = (are) * (bim) + (aim) * (bre);  \
-} while (0)
-
 static void init_ff_cos_tabs(int index)
 {
     int i;
     int m = 1<<index;
-    double freq = 2.*M_PI/(double)m;
-    double *tab = ff_cos_tabs[index];
+    zfloat freq = 2.*M_PI/(zfloat)m;
+    zfloat *tab = ff_cos_tabs[index];
     for(i=0; i<=m/4; i++)
         tab[i] = cos(i*freq);
     for(i=1; i<m/4; i++)
@@ -196,13 +222,15 @@ static CosTabsInitOnce cos_tabs_init_once[18] = {
     { init_ff_cos_tabs_131072, false },
 };
 
-static void ff_init_ff_cos_tabs(int index)
+static inline void ff_init_ff_cos_tabs(int index)
 {
     if (!cos_tabs_init_once[index].control) {
         cos_tabs_init_once[index].func();
         cos_tabs_init_once[index].control = true;
     }
 }
+
+#define M_TWOPI (M_PI * 2.)
 
 template <typename T>
 class AVFFT
@@ -214,35 +242,32 @@ class AVFFT
     
 public:
     
-    AVFFT() : fwd(this), rev(this)
-    {
-        fwd.initialized = false;
-        rev.initialized = false;
-    }
+    AVFFT() : fwd(this), rev(this) { }
     
     void real_fft(const T* in, T *out, int N, bool forward, bool scale = false)
     {
-        alignas(MALLOC_ALIGNMENT) cmplxT<T> fft[N];
+        alignas(64) cmplxT<T> fft[N];
         cmplxT<T> x, h1, h2;
-        zfloat tmp, c2, theta, scv = 1.;
+        zfloat tmp, c2, theta;
         cmplxT<zfloat> wp, w;
         const zfloat c1 = 0.5;
+
+        zfloat scv = 1.;
+        if (scale) scv = 1./(zfloat)N;
         
         w = cmplxT<zfloat>(1,0);
-        theta = M_PI / (zfloat)N;
+        theta = M_PI/(zfloat)N;
         
-        if (forward)  // forward fft
+        if (forward)
         {
-            zfloat scv = 1.;
-            if (scale) scv = 1./(zfloat)N;
-            
             for (int i=0; i<N; i++) {
                 fft[i] = cmplxT<T>(in[i] * scv, 0.0);
             }
             cmplx_fft(fft, fft, N, forward);
+           
             c2 = -0.5;
             x = fft[0];
-        } else  // reverse fft
+        } else 
         {
             memcpy(fft, in, sizeof(cmplxT<T>) * N);
             c2 = 0.5;
@@ -270,52 +295,33 @@ public:
             w.im = w.im * wp.re + tmp * wp.im + w.im;
         }
         
-        if (forward) { // forward fft
-            fft[0].im = x.re;
+        if (forward) {
+            //fft[0].im = x.re;
+            fft[0].im = fft[N/2].re;
+            fft[N/2].re = 0.0;
             memcpy(out, fft, sizeof(cmplxT<T>)*N);
         } else
-        { // reverse fft
+        {
             cmplx_fft(fft, fft, N, forward);
-            if (scale) scv = 1./(zfloat)N;
             for (int i=0; i<N; i++)
-                out[i] = fft[i].re * scv;
-        }
-    }
-    
-    void bit_reverse(T* x, int N)
-    {
-        T rtemp, itemp;
-        int i, j, m;
-        
-        for (i = j = 0; i < N; i += 2, j += m) {
-            if (j > i) {
-                rtemp = x[j]; itemp = x[j + 1];
-                x[j] = x[1]; x[j + 1] = x[i + 1];
-                x[i] = rtemp; x[i + 1] = itemp;
-            }
-            
-            for (m = N >> 1; m >= 2 && j >= m; m >>= 1)
-                j -= m;
+               out[i] = fft[i].re * scv;
         }
     }
 
-    void cmplx_fft(const cmplxT<T>* in, cmplxT<T>* out, int N, bool forward)
+    void cmplx_fft(const cmplxT<T> *in, cmplxT<T> *out, int N, bool forward)
     {
         if (forward) {
-            if (!fwd.initialized) {
-                fwd.init(floorlog2(N), 0);
+            if (!fwd.initialized()) {
+                fwd.init(floorlog2(N), false);
             }
-            memcpy(out, in, sizeof(cmplxT<T>)*N);
-            
+            memcpy(out, in, sizeof(cmplxT<T>) * N);
             fwd.permute(out);
             fwd.calc(out);
         } else {
-            if (!rev.initialized) {
-                rev.init(floorlog2(N), 1);
+            if (!rev.initialized()) {
+                rev.init(floorlog2(N), true);
             }
-            
-            memcpy(out, in, sizeof(cmplxT<T>)*N);
-            
+            memcpy(out, in, sizeof(cmplxT<T>) * N);
             rev.permute(out);
             rev.calc(out);
         }
@@ -328,59 +334,49 @@ protected:
         FF_FFT_PERM_SWAP_LSBS,
         FF_FFT_PERM_AVX,
     };
-
-    enum mdct_permutation_type {
-        FF_MDCT_PERM_NONE,
-        FF_MDCT_PERM_INTERLEAVE,
-    };
-
-    class FFTContext 
+    
+    class FFTContext
     {
     protected:
-        int         nbits;
-        int         inverse;
-        uint16_t    *revtab;
-        FFTComplex  *tmp_buf;
-        int         mdct_size;  /* size of MDCT (i.e. number of input data * 2) */
-        int         mdct_bits;  /* n = 2^nbits */
-        uint32_t    *revtab32;
-       
-        /* pre/post rotation tables */
-        T           *tcos;
-        T           *tsin;
-        AVFFT       *avf;
-       
-    public:
-        bool        initialized;
+        int         _nbits;
+        bool        _inverse;
+        uint16_t    *_revtab;
+        uint32_t    *_revtab32;
+        FFTComplex  *_tmpbuf;
+        bool        _initialized;
 
-        FFTContext(AVFFT *avfft) {
-            revtab = NULL;
-            revtab32 = NULL;
-            tmp_buf = NULL;
-            avf = avfft;
-            initialized = false;
+    public:
+
+        FFTContext(AVFFT *owner)
+        {
+            _revtab = NULL;
+            _revtab32 = NULL;
+            _inverse = false;
+            _initialized = false;
+            _tmpbuf = NULL;
+            _nbits = 0;
         }
         
         ~FFTContext()
         {
-             if (revtab) free(revtab);
-             revtab = NULL;
-             if (revtab32) free(revtab32);
-             revtab32 = NULL;
-             if (tmp_buf) free(tmp_buf);
-             tmp_buf = NULL;
-         
+            if (_revtab) free(_revtab);
+            _revtab = NULL;
+            if (_revtab32) free(_revtab32);
+            _revtab32 = NULL;
         }
         
-        int split_radix_permutation(int i, int n, int inverse)
+        bool initialized() const { return _initialized; }
+        
+        int split_radix_permutation(int i, int n, int inv)
         {
-            int m;
-            if(n <= 2) return i&1;
-            m = n >> 1;
-            if(!(i&m))            return split_radix_permutation(i, m, inverse)*2;
+            if (n <= 2) return i & 1;
+            int m = n >> 1;
+            if (!(i&m)) return split_radix_permutation(i, m, inv) * 2;
             m >>= 1;
-            if(inverse == !(i&m)) return split_radix_permutation(i, m, inverse)*4 + 1;
-            else                  return split_radix_permutation(i, m, inverse)*4 - 1;
+            if (inv == !(i&m))
+                return split_radix_permutation(i, m, inv) * 4 + 1;
+            else
+                return split_radix_permutation(i, m, inv) * 4 - 1;
         }
 
 
@@ -398,125 +394,134 @@ protected:
 
         void perm_avx()
         {
-            int i;
-            int n = 1 << nbits;
-
-            for (i = 0; i < n; i += 16) {
-                int k;
-                if (is_second_half_of_fft32(i, n)) {
-                    for (k = 0; k < 16; k++)
-                        revtab[-split_radix_permutation(i + k, n, inverse) & (n - 1)] =
-                            i + avx_tab[k];
-
+            int n = 1 << _nbits;
+            
+            for (int i=0; i < n; i+=16)
+            {
+                if (is_second_half_of_fft32(i, n))
+                {
+                    for (int k=0; k < 16; k++) {
+                        _revtab[-split_radix_permutation(i + k, n, _inverse) & (n - 1)] = i + avx_tab[k];
+                    }
                 } else {
-                    for (k = 0; k < 16; k++) {
+                    for (int k=0; k < 16; k++) {
                         int j = i + k;
                         j = (j & ~7) | ((j >> 1) & 3) | ((j << 2) & 4);
-                        revtab[-split_radix_permutation(i + k, n, inverse) & (n - 1)] = j;
+                        _revtab[-split_radix_permutation(i + k, n, _inverse) & (n - 1)] = j;
                     }
                 }
             }
         }
 
-        int init(int nb, int inv)
+        int init(int nb, bool inverse)
         {
             int i, j, n;
 
-            revtab = NULL;
-            revtab32 = NULL;
+            _revtab = NULL;
+            _revtab32 = NULL;
 
             if (nb < 2 || nb > 17)
                 goto fail;
-            nbits = nb;
-            n = 1 << nbits;
-
-            if (nbits <= 16) {
-                revtab = (uint16_t*)aligned_malloc(n * sizeof(uint16_t));
-                if (!revtab)
+            _nbits = nb;
+            n = 1 << _nbits;
+            _inverse = inverse;
+           
+            _tmpbuf = callocT<FFTComplex>(n);
+            if (!_tmpbuf)
+                goto fail;
+            
+            if (_nbits <= 16) {
+                _revtab = callocT<uint16_t>(n);
+                if (!_revtab)
                     goto fail;
             } else {
-                revtab32 = (uint32_t*)aligned_malloc(n * sizeof(uint32_t));
-                if (!revtab32)
+                _revtab32 = callocT<uint32_t>(n);
+                if (!_revtab32)
                     goto fail;
             }
-            tmp_buf = (FFTComplex*)aligned_malloc(n * sizeof(FFTComplex));
-            if (!tmp_buf)
-                goto fail;
-            inverse = inv;
-            fft_permutation = FF_FFT_PERM_DEFAULT; //FF_FFT_PERM_SWAP_LSBS; //FF_FFT_PERM_DEFAULT;
+            fft_permutation = FF_FFT_PERM_DEFAULT; //FF_FFT_PERM_AVX; //FF_FFT_PERM_SWAP_LSBS; //FF_FFT_PERM_DEFAULT;
 
-
-            for(j=4; j <= nbits; j++) {
+            for(j=4; j <= _nbits; j++) {
                 ff_init_ff_cos_tabs(j);
             }
 
-#define PROCESS_FFT_PERM_SWAP_LSBS(num) do {\
-    for(i = 0; i < n; i++) {\
-        int k;\
-        j = i;\
-        j = (j & ~3) | ((j >> 1) & 1) | ((j << 1) & 2);\
-        k = -split_radix_permutation(i, n, inverse) & (n - 1);\
-        revtab##num[k] = j;\
-    } \
-} while(0);
-
-#define PROCESS_FFT_PERM_DEFAULT(num) do {\
-    for(i = 0; i < n; i++) {\
-        int k;\
-        j = i;\
-        k = -split_radix_permutation(i, n, inverse) & (n - 1);\
-        revtab##num[k] = j;\
-    } \
-} while(0);
-
+            if (fft_permutation == FF_FFT_PERM_AVX) {
+                perm_avx();
+            } else {
+#define PROCESS_FFT_PERM_SWAP_LSBS(num) do { \
+for(i = 0; i < n; i++) {\
+int k;\
+j = i;\
+j = (j & ~3) | ((j >> 1) & 1) | ((j << 1) & 2);\
+k = -split_radix_permutation(i, n, _inverse) & (n - 1);\
+_revtab##num[k] = j;\
+} \
+} while (0);
+                
+#define PROCESS_FFT_PERM_DEFAULT(num) do { \
+for(i = 0; i < n; i++) {\
+int k;\
+j = i;\
+k = -split_radix_permutation(i, n, _inverse) & (n - 1);\
+_revtab##num[k] = j;\
+} \
+} while (0);
+                
 #define SPLIT_RADIX_PERMUTATION(num) do { \
-    if (fft_permutation == FF_FFT_PERM_SWAP_LSBS) {\
-        PROCESS_FFT_PERM_SWAP_LSBS(num) \
-    } else {\
-        PROCESS_FFT_PERM_DEFAULT(num) \
-    }\
-} while(0);
-
-            if (revtab)
-                SPLIT_RADIX_PERMUTATION()
-            if (revtab32)
-                SPLIT_RADIX_PERMUTATION(32)
-
+if (fft_permutation == FF_FFT_PERM_SWAP_LSBS) {\
+PROCESS_FFT_PERM_SWAP_LSBS(num) \
+} else {\
+PROCESS_FFT_PERM_DEFAULT(num) \
+} \
+} while (0);
+                
+                if (_revtab)
+                    SPLIT_RADIX_PERMUTATION()
+                    
+                if (_revtab32)
+                    SPLIT_RADIX_PERMUTATION(32)
+                        
 #undef PROCESS_FFT_PERM_DEFAULT
 #undef PROCESS_FFT_PERM_SWAP_LSBS
 #undef SPLIT_RADIX_PERMUTATION
-
-            initialized = true;
+                        }
+            _initialized = true;
             return 0;
          fail:
-            if (revtab) aligned_free(revtab);
-            revtab = NULL;
-            if (revtab32) aligned_free(revtab32);
-            revtab32 = NULL;
-            if (tmp_buf) aligned_free(tmp_buf);
-            tmp_buf = NULL;
+            if (_revtab) callocT_free(_revtab);
+            _revtab = NULL;
+            if (_revtab32) callocT_free(_revtab32);
+            _revtab32 = NULL;
+            if (_tmpbuf) callocT_free(_tmpbuf);
+            _tmpbuf = NULL;
             return -1;
         }
 
         void permute(FFTComplex *z)
         {
-            int j, np;
-            const uint16_t *rt = revtab;
-            const uint32_t *rt32 = revtab32;
-            np = 1 << nbits;
-            /* TODO: handle split-radix permute in a more optimal way, probably in-place */
-            if (revtab) {
-                for(j=0;j<np;j++) tmp_buf[rt[j]] = z[j];
-            } else
-                for(j=0;j<np;j++) tmp_buf[rt32[j]] = z[j];
-
-           // for(j=0;j<np;j++) z[j] = tmp_buf[j];
-            memcpy(z, tmp_buf, np * sizeof(FFTComplex));
+            int j, np = 1 << _nbits;
+            const uint16_t *rt = _revtab;
+            const uint32_t *rt32 = _revtab32;
+            FFTComplex *tmp = _tmpbuf;
+            
+            // TODO: handle split-radix permute in a more optimal way, probably in-place
+            if (rt) {
+                for(int j=0;j<np;j++) tmp[rt[j]] = z[j];
+            } else if (rt32) {
+                for(int j=0;j<np;j++) tmp[rt32[j]] = z[j];
+            } else {
+                fprintf(stderr, "WARNING: revtab nor revtab32 are allocated. Abort.\n");
+                return;
+            }
+            for(int j=0;j<np;j++) z[j] = tmp[j];
         }
         
         void calc(FFTComplex *z)
         {
-            fft_dispatch[nbits-2](z);
+            if (initialized())
+                fft_dispatch[_nbits-2](z);
+            else
+                fprintf(stderr, "WARNING: init() was not called before calc() as required. Abort.\n");
         }
 
     protected:
@@ -524,7 +529,6 @@ protected:
         static constexpr int avx_tab[] = {
             0, 4, 1, 5, 8, 12, 9, 13, 2, 6, 3, 7, 10, 14, 11, 15
         };
-
 
 #define BF(x, y, a, b) \
     x = a - b; \
@@ -540,8 +544,10 @@ protected:
 }
 
 // force loading all the inputs before storing any.
-// this is slightly slower for small data, but avoids store->load aliasing
-// for addresses separated by large powers of 2.
+// this is slightly slower for small data, but avoids
+// store->load aliasing for addresses separated by large
+// powers of 2
+
 #define BUTTERFLIES_BIG(a0,a1,a2,a3) {\
     T r0=a0.re, i0=a0.im, r1=a1.re, i1=a1.im;\
     BF(t3, t5, t5, t1);\
@@ -551,6 +557,12 @@ protected:
     BF(a3.re, a1.re, r1, t4);\
     BF(a2.im, a0.im, i0, t6);\
 }
+
+#define sqrthalf   M_SQRT1_2
+
+#define CMUL(dre, dim, are, aim, bre, bim) \
+    (dre) = (are) * (bre) - (aim) * (bim);  \
+    (dim) = (are) * (bim) + (aim) * (bre);
 
 #define TRANSFORM(a0,a1,a2,a3,wre,wim) {\
     CMUL(t1, t2, a2.re, a2.im, wre, -wim);\
@@ -566,15 +578,16 @@ protected:
     BUTTERFLIES(a0,a1,a2,a3)\
 }
 
-/* z[0...8n-1], w[1...2n-1] */
-#define PASS(name)\
-static void name(FFTComplex *z, const double *wre, unsigned int n)\
+// z[0...8n-1], w[1...2n-1]
+ 
+#define PASS(name) \
+static void name(FFTComplex *z, const zfloat *wre, unsigned int n)\
 {\
     T t1, t2, t3, t4, t5, t6;\
     int o1 = 2*n;\
     int o2 = 4*n;\
     int o3 = 6*n;\
-    const double *wim = wre+o1;\
+    const zfloat *wim = wre+o1;\
     n--;\
 \
     TRANSFORM_ZERO(z[0],z[o1],z[o2],z[o3]);\
@@ -590,17 +603,18 @@ static void name(FFTComplex *z, const double *wre, unsigned int n)\
 
         PASS(pass)
 #undef BUTTERFLIES
+        
 #define BUTTERFLIES BUTTERFLIES_BIG
         PASS(pass_big)
 
 #define DECL_FFT(n,n2,n4)\
-static void fft##n(FFTComplex *z)\
-{\
-    fft##n2(z);\
-    fft##n4(z+n4*2);\
-    fft##n4(z+n4*3);\
-    pass(z,ff_cos_##n,n4/2);\
-}
+        static void fft##n(FFTComplex *z)\
+        {\
+            fft##n2(z);\
+            fft##n4(z+n4*2);\
+            fft##n4(z+n4*3);\
+            pass(z,ff_cos_##n,n4/2);\
+        }
       
         static void fft4(FFTComplex *z)
         {
@@ -628,21 +642,21 @@ static void fft##n(FFTComplex *z)\
             BF(t6, z[7].im, z[6].im, -z[7].im);
 
             BUTTERFLIES(z[0],z[2],z[4],z[6]);
-            TRANSFORM(z[1],z[3],z[5],z[7],_sqrthalf,_sqrthalf);
+            TRANSFORM(z[1],z[3],z[5],z[7],sqrthalf,sqrthalf);
         }
 
         static void fft16(FFTComplex *z)
         {
             T t1, t2, t3, t4, t5, t6;
-            T cos_16_1 = ff_cos_16[1];
-            T cos_16_3 = ff_cos_16[3];
+            zfloat cos_16_1 = ff_cos_16[1];
+            zfloat cos_16_3 = ff_cos_16[3];
 
             fft8(z);
             fft4(z+8);
             fft4(z+12);
 
             TRANSFORM_ZERO(z[0],z[4],z[8],z[12]);
-            TRANSFORM(z[2],z[6],z[10],z[14],_sqrthalf,_sqrthalf);
+            TRANSFORM(z[2],z[6],z[10],z[14],sqrthalf,sqrthalf);
             TRANSFORM(z[1],z[5],z[9],z[13],cos_16_1,cos_16_3);
             TRANSFORM(z[3],z[7],z[11],z[15],cos_16_3,cos_16_1);
         }
@@ -652,7 +666,7 @@ static void fft##n(FFTComplex *z)\
         DECL_FFT(256,128,64)
         DECL_FFT(512,256,128)
         
-        #define pass pass_big
+#define pass pass_big
         
         DECL_FFT(1024,512,256)
         DECL_FFT(2048,1024,512)
@@ -668,7 +682,6 @@ static void fft##n(FFTComplex *z)\
             fft2048, fft4096, fft8192, fft16384, fft32768, fft65536, fft131072
         };
         enum fft_permutation_type fft_permutation;
-        enum mdct_permutation_type mdct_permutation;
     };
 
 protected:
@@ -676,6 +689,7 @@ protected:
     FFTContext  fwd, rev;
   
 };
+
 
 
 
