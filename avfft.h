@@ -1,9 +1,8 @@
 #pragma once
 
-/** AVFFT v1.3 C++ wrapper class written by Dmitry Boldyrev
+/** AVFFT v1.3 C++ wrapper class written by DEMOS
  **
  **  GITHUB: https://github.com/mewza
- **  Email: subband@protonmail.com
  **
  **  This FFT wrapper is based on AV MPEG AUDIO source code, so I am not really
  **  going to officially claim any (C) to it, because I honestly,
