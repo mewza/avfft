@@ -7,7 +7,8 @@ I think it is even a bit faster than PFFFT when used in simd vector mode, it sou
 to me at least, but I suppose that's subjective, though I do have a very refined sound engineer hearing.
 
 The input/output is 100% compatible with PFFFT so you can just drop replace PFFFT if you like. 
-I made Zita Convolver work in simd_float8 mode, which was another great accomplishment. 
+I made Zita Convolver work with AVFFT in simd_float8 mode, which was a great accomplishment, but
+need to do more work there maybe I will even release a vectorized Zita, we'll see.
 
 So what's new in 1.5? and why a sudden version jump? I revamped the whole thing, cleaned it up, 
 added my nifty cmplxT<T> class that I made, and added ARM64 asm optimizations but they will only 
