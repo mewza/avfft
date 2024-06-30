@@ -12,7 +12,9 @@ need to do more work there maybe I will even release a vectorized Zita, we'll se
 
 So what's new in 1.5? and why a sudden version jump? I revamped the whole thing, cleaned it up, 
 added my nifty cmplxT<T> class that I made, and added ARM64 asm optimizations but they will only 
-be applied if you defined zfloat as a float and not double. I will adapt assembler code to work 
-w/ doubles later... enjoy.
+be applied if you defined zfloat as a float and not double, and the NEON optimizations won't work
+with vectors,some day they will I promise. And I will adapt NEON asm code to work w/ doubles... 
+
+enjoy.
 
 Dimitry (not from Paris ;)
