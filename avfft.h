@@ -1,4 +1,4 @@
-/** AVFFT v1.5 C++ wrapper class written by Dmitry Boldyrev
+/** AVFFT v1.6 C++ wrapper class written by Dmitry Boldyrev
  **
  **  GITHUB: https://github.com/mewza
  **  Email: subband@protonmail.com
@@ -19,89 +19,12 @@
 
 #pragma once
 
-#include <simd/simd.h>
+#include "const1.h"
 
 // USE_NEON must be defined as true or false for NEON asm optimizations
 // Note: for now it only works if zfloat is defined as float not double
 
 #define USE_NEON true
-
-#ifndef D_ZFLOAT
-#define D_ZFLOAT
-
-#define DECL_ZFLOAT(TYPE) \
-typedef TYPE zfloat; \
-typedef simd_##TYPE##2 zfloat2; \
-typedef simd_##TYPE##4 zfloat4; \
-typedef simd_##TYPE##8 zfloat8; \
-static inline zfloat8 make_zfloat8(zfloat4& a, zfloat4& b) { return simd_make_##TYPE##8(a,b); } \
-static inline zfloat4 make_zfloat4(zfloat2& a, zfloat2& b) { return simd_make_##TYPE##4(a,b); } \
-static inline zfloat2 make_zfloat8(zfloat& a, zfloat& b) { return simd_make_##TYPE##2(a,b); }
-
-DECL_ZFLOAT(float)
-
-#endif // D_ZFLOAT
-
-#ifndef D_CMPLX_T
-#define D_CMPLX_T
-
-template <typename T>
-struct cmplxT {
-    cmplxT(T r, T i) { re = r; im = i; }
-    cmplxT(const cmplxT& v) {
-        re = v.re;
-        im = v.im;
-    }
-    cmplxT(long double v) {
-        re = v; im = v;
-    }
-    cmplxT() { re = 0.0; im = 0.0; }
-    T mag() const {
-        return F_SQRT(re * re + im * im);
-    }
-    inline cmplxT<T> operator * (const double d) {
-        re *= d;
-        im *= d;
-        return *this;
-    }
-    inline void operator *= (long double d) {
-        re *= d;
-        im *= d;
-    }
-    inline void operator *= (const cmplxT<T> &x)
-    {
-        *this = cmplxT<T>(re * x.re - im * x.im, re * x.im + im * x.re);
-    }
-    inline cmplxT<T> operator / (const cmplxT<T> &x)
-    {
-        T denum = (x.re * x.re + x.im * x.im);
-        return cmplxT<T>((re * x.re + im * x.im) / denum, (im * x.re - re * x.im) / denum);
-    }
-    inline cmplxT<T> operator ^ (const cmplxT<T> &d) {
-        return cmplxT<T>(re * d.re - im * d.im, re * d.im + im * d.re);
-    }
-    inline cmplxT<T> operator & (const int8v& mask) {
-        return cmplxT<T>(shufflevector(re,mask),shufflevector(im,mask));
-    }
-    inline void operator += (const cmplxT<zfloat4> &d) {
-        re += d.re;
-        im += d.im;
-    }
-    inline void operator += (const cmplxT<zfloat8> &d) {
-        re += d.re;
-        im += d.im;
-    }
-    inline void operator += (const cmplxT<zfloat> &d) {
-        re += d.re;
-        im += d.im;
-    }
-    inline T real() const { return re; }
-    inline T imag() const { return im; }
-
-    T re;
-    T im;
-};
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -155,90 +78,110 @@ COSTABLE(131072);
 #endif
 
 #define M_TWOPI (M_PI * 2.)
-#define NEON_ASM_COND (USE_NEON && std::is_same_v<T, zfloat> && std::is_same_v<zfloat, float>)
+#define NEON_ASM_COND (USE_NEON && std::is_same_v<T, float>)
 
 template <typename T>
 class AVFFT
 {
+    using FT =  std::conditional_t<std::is_same_v<T, float8v>, float,
+                std::conditional_t<std::is_same_v<T, float4v>, float,
+                std::conditional_t<std::is_same_v<T, float2v>, float,
+                std::conditional_t<std::is_same_v<T, float>, float,
+                std::conditional_t<std::is_same_v<T, double8v>, double,
+                std::conditional_t<std::is_same_v<T, double4v>, double,
+                std::conditional_t<std::is_same_v<T, double2v>, double,
+                std::conditional_t<std::is_same_v<T, double>, double, T >>>>>>>>;
+
     typedef cmplxT<T> ComplexT;
+
 public:
     
-    AVFFT() : fwd(this), rev(this) {}
+    AVFFT() {}
 
-    void real_fft(const T* in, T *out, int N, bool forward, bool scale = false)
+    void real_fft(const T* x, T* y, int N, bool forward, bool do_scale = false)
     {
-        alignas(64) cmplxT<T>  fft[N+1];
-        cmplxT<T>   x, h1, h2;
-        zfloat      tmp, c2, theta;
-        cmplxT<zfloat> wp, w;
+        FT wpr, wpi, theta;
+        T xr, xi, c1, c2, h1r, h1i, h2r, h2i, wr, wi, temp;
+        int N2 = N >> 1, N4 = N >> 2;
+        int i, i1, i2, i3, i4, N2p1;
 
-        zfloat scv = 1.;
-        if (scale) scv = 1./(zfloat)N;
-        
-        w = cmplxT<zfloat>(1,0);
-        theta = M_PI/(zfloat)N;
-        
-        memset(fft, 0, sizeof(fft));
-
-        if (forward)
-        {
-            for (int i=0; i<N; i++) {
-                fft[i] = cmplxT<T>(in[i] * scv, 0.0);
-            }
-            cmplx_fft(fft, fft, N, forward);
-           
-            c2 = -0.5;
-            x = fft[0];
+        if (forward) {
+            memcpy(y, x, sizeof(T)*N);
+            y[N] = y[N+1] = 0.0;
         } else
-        {
-            memcpy(fft, in, sizeof(cmplxT<T>) * (N/2+1));
-           
+            memcpy(y, x, sizeof(T)*(N+2));
+        
+        theta = M_PI / (FT)(N2);
+        wr = 1.;
+        wi = 0.;
+        c1 = 0.5;
+
+        if (forward) {
+            c2 = -0.5;
+            cmplx_fft((cmplxT<T>*)y, (cmplxT<T>*)y, N2, forward, do_scale);
+            xr = y[0];
+            xi = y[1];
+        }
+        else {
             c2 = 0.5;
             theta = -theta;
-            x = cmplxT<T>(fft[0].im, 0);
-            fft[0].im = 0;
+            xr = y[1];
+            xi = 0.;
+            y[1] = 0.;
         }
-        const zfloat xx = sin(0.5*theta);
-        wp = cmplxT<zfloat>(-2. * xx * xx, sin(theta));
-        
-        for (int i=0; i <= N/2; i++) {
-            int ir = N-i;
-            if (i) {
-                h1 = cmplxT<T>( fft[i].re + fft[ir].re, fft[i].im - fft[ir].im) * 0.5;
-                h2 = cmplxT<T>(-fft[i].im - fft[ir].im, fft[i].re - fft[ir].re) * c2;
-                fft[i] =  cmplxT<T>(h1.re + w.re * h2.re - w.im * h2.im,  h1.im + w.re * h2.im + w.im * h2.re);
-                fft[ir] = cmplxT<T>(h1.re - w.re * h2.re + w.im * h2.im, -h1.im + w.re * h2.im + w.im * h2.re);
-            } else {
-                h1 = cmplxT<T>( fft[i].re + x.re, fft[i].im - x.im) * 0.5;
-                h2 = cmplxT<T>(-fft[i].im - x.im, fft[i].re - x.re) * c2;
-                fft[i] = cmplxT<T>(h1.re + w.re * h2.re - w.im * h2.im,  h1.im + w.re * h2.im + w.im * h2.re);
-                x      = cmplxT<T>(h1.re - w.re * h2.re - w.im * h2.im, -h1.im + w.re * h2.im + w.im * h2.re);
+
+        wpr = (-2.*F_POW(F_SIN(0.5 * theta), 2.));
+        wpi = F_SIN(theta);
+        N2p1 = N + 1;
+
+        for (i = 0; i <= N4; i++) {
+            i1 = i << 1;
+            i2 = i1 + 1;
+            i3 = N2p1 - i2;
+            i4 = i3 + 1;
+            if (i == 0) 
+            {
+                h1r =  c1*(y[i1] + xr);
+                h1i =  c1*(y[i2] - xi);
+                h2r = -c2*(y[i2] + xi);
+                h2i =  c2*(y[i1] - xr);
+                y[i1] = h1r + wr*h2r - wi*h2i;
+                y[i2] = h1i + wr*h2i + wi*h2r;
+                xr =  h1r - wr*h2r - wi*h2i;
+                xi = -h1i + wr*h2i + wi*h2r;
+            } else
+            {
+                h1r = c1*(y[i1] + y[i3]);
+                h1i = c1*(y[i2] - y[i4]);
+                h2r = -c2*(y[i2] + y[i4]);
+                h2i = c2*(y[i1] - y[i3]);
+                y[i1] = h1r + wr*h2r - wi*h2i;
+                y[i2] = h1i + wr*h2i + wi*h2r;
+                y[i3] = h1r - wr*h2r + wi*h2i;
+                y[i4] = -h1i + wr*h2i + wi*h2r;
             }
-            w.re = (tmp = w.re) * wp.re - w.im * wp.im + w.re;
-            w.im = w.im * wp.re + tmp * wp.im + w.im;
+
+            wr = (temp = wr)*wpr - wi*wpi + wr;
+            wi = wi*wpr + temp*wpi + wi;
         }
-        
+
         if (forward) {
-            //fft[0].im = x.re;
-            fft[0].im = fft[N/2].re;
-            fft[N/2].re = 0.0;
-            memcpy(out, fft, sizeof(cmplxT<T>) * N / 2);
-        } else
-        {
-            if (scale) scv = 2.;
-            cmplx_fft(fft, fft, N, forward);
-            for (int i=0; i<N; i++)
-               out[i] = fft[i].re * scv;
+          //  y[1] = xr;
+            y[1] = y[N];
+            y[N] = 0.0;
+        } else {
+            cmplx_fft((cmplxT<T>*)y, (cmplxT<T>*)y, N2, forward, do_scale);
         }
     }
 
-    void cmplx_fft(const cmplxT<T> *in, cmplxT<T> *out, int N, bool forward)
+    void cmplx_fft(const cmplxT<T> *in, cmplxT<T> *out, int NC, bool forward, bool scale = false)
     {
+        int ND = NC << 1;
         if (forward) {
             if (!fwd.initialized()) {
-                fwd.init(N, false);
+                fwd.init(NC, false);
             }
-            memcpy(out, in, sizeof(cmplxT<T>) * (N+1));
+            memcpy(out, in, sizeof(cmplxT<T>) * (NC+1));
            
             if constexpr(NEON_ASM_COND)  {
                 ff_fft_permute_neon(&fwd, (FFTComplex*)out);
@@ -247,11 +190,16 @@ public:
                 fwd.permute(out);
                 fwd.calc(out);
             }
+            zfloat scv = 1.0/(zfloat)ND;
+            cmplxT<T> *xi = out, *xe = &out[NC];
+            if (scale) {
+                while (xi < xe) *xi++ *= scv;
+            }
         } else {
             if (!rev.initialized()) {
-                rev.init(N, true);
+                rev.init(NC, true);
             }
-            memcpy(out, in, sizeof(cmplxT<T>) * (N+1));
+            memcpy(out, in, sizeof(cmplxT<T>) * (NC+1));
           
             if constexpr(NEON_ASM_COND)  {
                 ff_fft_permute_neon(&rev, (FFTComplex*)out);
@@ -259,6 +207,11 @@ public:
             } else {
                 rev.permute(out);
                 rev.calc(out);
+            }
+            zfloat scv = 2.0;
+            cmplxT<T> *xi = out, *xe = &out[NC];
+            if (scale) {
+                while (xi < xe) *xi++ *= scv;
             }
         }
     }
@@ -277,7 +230,7 @@ protected:
         };
 
     public:
-        FFTContext(AVFFT<TT> *owner)
+        FFTContext()
         {
             _revtab = NULL;
             _revtab32 = NULL;
