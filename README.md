@@ -3,7 +3,7 @@ AVFFT v1.6 - Optimized C++ templated SIMD-vector capable forward and reverse rea
 NEW:  v1.6 now includes my useful const1.h which is required for compiling SIMD AVFFT 1.6. I fixed major bugs
 again in real_fft() it is now computing it correctly and with the most efficiency. I think this 
 will be the last update for a while since I feel that I accomplished what I wanted to do with vectorization of FFT.
-It is working really good finally! it is fast and the sound quality is outstanding! and I am not 
+It is working really good finally! it is fast and the sound quality is outstanding prodced by this AV FFT! and I am not 
 hyping this up. 
 
 This is a fast and well tuned templated C++ real/complex implementation of FFT transform based on 
