@@ -1,6 +1,6 @@
 
-AVFFT v1.6 - Optimized very precise C++ templated SIMD vector forward and reverse real/complex FFT transform
-------------------------------------------------------------------------------------------------------------
+AVFFT v1.6 - Optimized and very precise C++ templated SIMD vector forward and reverse real/complex FFT transform
+----------------------------------------------------------------------------------------------------------------
 
 NEW:  v1.6 now includes my useful utility class - const1.h, which is required for compiling SIMD AVFFT 1.6.
 I fixed major bugs again in real_fft(): it is now computing correctly and with the most efficiency. I think this 
