@@ -1,20 +1,19 @@
 /** AVFFT v1.6 C++ wrapper class written by Dmitry Boldyrev
  **
- **  GITHUB: https://github.com/mewza
- **  Email: subband@protonmail.com
+ **  File: avfft.h
+ **  Main AVFFT class definition. You only need to include this file into your project
+ **  for AVFFT function, and you also need to add the .S file into your XCode project 
+ **  to be compiled-in.
  **
  **  This FFT wrapper is based on AV MPEG AUDIO source code, so I am not really
- **  going to officially claim any (C) to it, because I honestly,
- **  just put it together into an aeasy to use C++ templated wrapper,
- **  the great benefit I tested it, it works well with 32-bit and 64-bit
- **  floating point single types or as a form of intrinsic SIMD vectors.
+ **  going to officially claim any (C) to this, because honestly I just put it together
+ **  into an easy to use C++ templated wrapper that supports SIMD vectorization via template.
  **
- **  This is a much more robust version of AVFFT class. I made it 100% compatible
- **  with PFFFT, so you can just drop replace it and it will produce almost identical output,
- **  plus the intrinsic vector support via template T parameter.
+ **  I would appreciate credits in your app if you decide to use this convinient and well tuned
+ **  FFT class, and send me email link to your app for me to appreciate what you have created.
  **
- **  I would appreciate credits in the app if you use this fancy c++ wrapper, and I might try to
- **  add assembler optimizations next.
+ **  GITHUB: https://github.com/mewza
+ **  Email: subband@protonmail.com
  **/
 
 #pragma once
