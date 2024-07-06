@@ -22,4 +22,4 @@ To do: Implement assembly ARM optimizations for double precision, and vectors.
 
 enjoy.
 
-Dimitry (not from Paris ;)
+D
