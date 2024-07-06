@@ -18,6 +18,8 @@ The input/output is 100% compatible with PFFFT so you can just drop replace PFFF
 I made Zita Convolver work with AVFFT in simd_float8 mode, which was a great accomplishment too,
 and I will post it as soon as I double check everything. 
 
+To do: Implement assembly ARM optimizations for double precision, and vectors.
+
 enjoy.
 
 Dimitry (not from Paris ;)
