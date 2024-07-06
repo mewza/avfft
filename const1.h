@@ -485,42 +485,6 @@ static constexpr double G4 = 0.942636;
 static constexpr double G5 = 0.980351;
 static constexpr double G6 = 0.995302;
 
-template <typename T>
-static __inline T PHASESHIFT0(const T &in, T * co)
-{
-    co[0]  = (co[6]  - in)    * G1 + co[4];
-    co[1]  = (co[8]  - co[0]) * G3 + co[6];
-    co[2]  = (co[10] - co[1]) * G5 + co[8];
-    co[10] = co[9];
-    co[9]  = co[2];
-    co[8]  = co[7];
-    co[7]  = co[1];
-    co[6]  = co[5];
-    co[5]  = co[0];
-    co[4]  = co[3];
-    co[3]  = in;
-    return co[2];
-}
-
-template <typename T>
-static T PHASESHIFT90(const T &in, T * co)
-{
-    T out;
-    co[0]  = (co[6]  - in)    * G1 + co[4];
-    co[1]  = (co[8]  - co[0]) * G3 + co[6];
-    co[2]  = (co[10] - co[1]) * G5 + co[8];
-    out = co[9];
-    co[10] = co[9];
-    co[9]  = co[2];
-    co[8]  = co[7];
-    co[7]  = co[1];
-    co[6]  = co[5];
-    co[5]  = co[0];
-    co[4]  = co[3];
-    co[3]  = in;
-    return out;
-}
-
 class DenormalsOff {
    
 public:
