@@ -1,6 +1,6 @@
-/** AVFFT v1.6 C++ wrapper class written by Dmitry Boldyrev
+/**  AVFFT v1.6 C++ wrapper class written by Dmitry Boldyrev
  **
- ** File: const1.h
+ **  File: const1.h
  **  Miscellaneous useful functions and definitions for SIMD support
  **
  **  GITHUB: https://github.com/mewza
