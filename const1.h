@@ -474,26 +474,6 @@ static constexpr double G4 = 0.942636;
 static constexpr double G5 = 0.980351;
 static constexpr double G6 = 0.995302;
 
-class DenormalsOff {
-   
-public:
-   DenormalsOff() {
-       // Store current FPCR
-       asm volatile("mrs %0, fpcr" : "=r" (fpcr_));
-       // Set FZ (Flush-to-zero mode) bit to disable denormals
-       asm volatile("orr %0, %0, (1 << 24)" : "+r" (fpcr_));
-       // Write back the modified FPCR
-       asm volatile("msr fpcr, %0" :: "r" (fpcr_));
-   }
-
-   ~DenormalsOff() {
-       // Restore the original FPCR
-       asm volatile("msr fpcr, %0" :: "r" (fpcr_));
-   }
-private:
-   uint64_t fpcr_;
-};
-
 static __inline double fast_log2(double x) { return __builtin_log2(x); }
 static __inline double fast_log(double x) { return fast_logf(x); } //__builtin_log(x); }
 
@@ -666,62 +646,6 @@ static __inline int sanitize_denormals( T *out, int count, const char *str = "" 
 }
 
 
-class PeakDistAnalyzer
-{
-    static const int MAX_DIST = 30;
-public:
-    PeakDistAnalyzer() {
-        peak_idx = idx = 0;
-    }
-    
-    void reset() {
-
-        for (int i=0; i<peak_idx; i++)
-            peaks[i].peak = 0.0;
-    }
-    
-    
-    void print(void) {
-        
-        for (int i=0; i<peak_idx; i++)
-            fprintf(stderr, "[%2d] %5s : %f\n", i+1, peaks[i].name, (float)peaks[i].peak);
-    }
-    
-    template <typename T>
-    void calcGain( T *out, int count, const char *str)
-    {
-        double peak = 0.0;
-        
-        if (!str) return;
-        
-        if (!strncasecmp(str, peaks[0].name, 255))
-            idx = 0;
-        
-        
-        while (count--) {
-            T s = *out++;
-            if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>)
-                peak = F_MAX(F_ABS(s), peak);
-            else
-                peak = F_MAX(__builtin_reduce_max(F_ABS(s)), peak);
-        }
-       
-        peak_idx = F_MAX(peak_idx, idx + 1);
-        peaks[idx].peak = F_MAX(peaks[idx].peak, peak);
-        strncpy(peaks[idx].name, str, 255);
-        
-        idx++;
-    }
-
-protected:
-    
-    struct {
-        double peak;
-        char name[255];
-    } peaks[MAX_DIST];
-    
-    int idx, peak_idx;
-};
 #define P_STR(x) #x
 #define P_STRINGIFY(x) P_STR(x)
 
@@ -736,8 +660,6 @@ protected:
 #define CHECK_NULL(x)           if (!(x)) { fprintf(stderr, "CHECK_NULL: %s\n",getName(x)); raise(SIGINT); }
 
 #define SQ2_2                   0.7071067811865475244
-
-
 #define CMPLX_MAG(X,Y)          F_SQRT( (X) * (X) + (Y) * (Y) )
 
 #ifndef D_CMPLX_T
@@ -816,9 +738,6 @@ public:
 }; // __attribute__((packed));
 
 #endif //D_CMPLX_T
-
-/* SSE and co like 16-bytes aligned pointers
- * with a 64-byte alignment, we are even aligned on L2 cache lines... */
 
 #define MALLOC_V4SF_ALIGNMENT   64
 #define VALIGNED_ID             'VLGN'
