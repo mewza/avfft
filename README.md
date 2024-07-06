@@ -8,7 +8,7 @@ will be the last update for a while since I feel that I accomplished what I want
 It is fast and the sound quality is outstanding prodced by this AV FFT when used in my audio project.
 
 This is a fast and well tuned templated C++ real/complex implementation of FFT transform based on 
-AV MPEG C version. It works well and compiles in the most recent version of XCode and iOS. 
+AV MPEG C version. It works well and compiles in the most recent version of XCode 15.4 and iOS 17.5. 
 
 I think it is even a bit faster than PFFFT when used in simd vector mode, it sounds more precise 
 to me than the PFFFT, but I suppose that could be subjective, though I have a very refined 
