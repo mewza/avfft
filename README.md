@@ -1,11 +1,10 @@
 
-AVFFT v1.6 - Optimized and very precise C++ templated SIMD vector forward and inverse real/complex FFT transform for iOS, OS X, and other platforms
+AVFFT v1.7 - Optimized and very precise C++ templated SIMD vector forward and inverse real/complex FFT transform for iOS, OS X, and other platforms
 ----------------------------------------------------------------------------------------------------------------
 
-NEW:  v1.6 now includes my useful utility class - const1.h, which is required for compiling SIMD AVFFT 1.6.
-I fixed major bugs again in real_fft(): it is now computing correctly and with the most efficiency. I think this 
-will be the last update for a while since I feel that I accomplished what I wanted to do with vectorization of FFT.
-It is fast and the sound quality is outstanding prodced by this AV FFT when used in my audio project.
+NEW:  v1.7 This is definitely IT. It sounds amaaazing! Yes, that good. Clean, clear, bassy, and detailed.
+      Numerous improvements throughout, added sine/cosine tables and redone the real_fft(). Besides optimizations,
+      this is a perfection so far. 
 
 This is a fast and well tuned templated C++ real/complex implementation of FFT transform based on 
 AV MPEG C version. It works well and compiles in the most recent version of XCode 15.4 and iOS 17.5. 
