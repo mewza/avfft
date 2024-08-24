@@ -1,4 +1,4 @@
-/** AVFFT v1.7 C++ wrapper class written by Dmitry Boldyrev
+/** AVFFT v1.71 C++ wrapper class written by Dmitry Boldyrev
  **
  **  File: avfft.h
  **  Main AVFFT class definition. You only need to include this file into your project
@@ -27,43 +27,44 @@
 
 typedef cmplxT<zfloat> FFTComplex;
 
-#define DECLARE_ALIGNED(n,t,v) t __attribute__ ((aligned (n))) v
-#define COSINTABLE(size) DECLARE_ALIGNED(32, zfloat, ff_cos_##size)[size/2]; \
-                         DECLARE_ALIGNED(32, zfloat, ff_sin_##size)[size/2]
+#define DEF_ALIGNED(n,t,v) extern t __attribute__ ((aligned (n))) v
+#define DEF_COSINTABLE(size) DEF_ALIGNED(32, zfloat, ff_cos_##size)[size/2]; \
+                         DEF_ALIGNED(32, zfloat, ff_sin_##size)[size/2]
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// needed to be "C" for asm links
+
 void ff_fft_permute_neon(void *s, FFTComplex *z);
 void ff_fft_calc_neon(void *s, FFTComplex *z);
-
-static inline void ff_init_ff_cosin_tabs(int index);
-static inline zfloat *get_ff_cos_tab(int index);
-static inline zfloat *get_ff_sin_tab(int index);
-static inline void pass_neon(FFTComplex*, zfloat *, unsigned int);
-
-/* cos(2*pi*x/n) for 0<=x<=n/4, followed by its reverse */
-
-COSINTABLE(16);
-COSINTABLE(32);
-COSINTABLE(64);
-COSINTABLE(128);
-COSINTABLE(256);
-COSINTABLE(512);
-COSINTABLE(1024);
-COSINTABLE(2048);
-COSINTABLE(4096);
-COSINTABLE(8192);
-COSINTABLE(16384);
-COSINTABLE(32768);
-COSINTABLE(65536);
-COSINTABLE(131072);
-
 
 #ifdef __cplusplus
 }
 #endif
+
+void ff_init_ff_cosin_tabs(int index);
+zfloat *get_ff_cos_tab(int index);
+zfloat *get_ff_sin_tab(int index);
+void pass_neon(FFTComplex*, zfloat *, unsigned int);
+
+/* cos(2*pi*x/n) for 0<=x<=n/4, followed by its reverse */
+
+DEF_COSINTABLE(16);
+DEF_COSINTABLE(32);
+DEF_COSINTABLE(64);
+DEF_COSINTABLE(128);
+DEF_COSINTABLE(256);
+DEF_COSINTABLE(512);
+DEF_COSINTABLE(1024);
+DEF_COSINTABLE(2048);
+DEF_COSINTABLE(4096);
+DEF_COSINTABLE(8192);
+DEF_COSINTABLE(16384);
+DEF_COSINTABLE(32768);
+DEF_COSINTABLE(65536);
+DEF_COSINTABLE(131072);
 
 static inline constexpr unsigned int floorlog2(unsigned int x) {
     return (x == 1) ? 0 : 1 + floorlog2(x >> 1);
@@ -75,34 +76,40 @@ static inline constexpr unsigned int floorlog2(unsigned int x) {
 template <typename T>
 class AVFFT
 {
-    using T1 =  std::conditional_t<std::is_same_v<T, float8v>, float,
-                std::conditional_t<std::is_same_v<T, float4v>, float,
-                std::conditional_t<std::is_same_v<T, float2v>, float,
-                std::conditional_t<std::is_same_v<T, float>, float,
-                std::conditional_t<std::is_same_v<T, double8v>, double,
-                std::conditional_t<std::is_same_v<T, double4v>, double,
-                std::conditional_t<std::is_same_v<T, double2v>, double,
-                std::conditional_t<std::is_same_v<T, double>, double, T >>>>>>>>;
-
-    // This is ugly, but what's another way to get root construct type from of a simd vector? I do not know
-
+    using T1 = SimdBase<T>;
     typedef cmplxT<T> ComplexT;
     
 public:
     
-    void real_fft(const T* x, T* y, int N, bool forward, bool do_scale = false)
+    void real_fft(const T* x, cmplxT<T>* y, int N, bool do_scale = false)
+    {
+        rfft(x, (T*)y, N, true, do_scale);
+    }
+
+    void real_ifft(const cmplxT<T>* x, T* y, int N, bool do_scale = false)
+    {
+        rfft((T*)x, y, N, false, do_scale);
+    }
+
+    void rfft(const T* x, T* y, int N, bool forward, bool do_scale = false)
     {
         ComplexT *yp = (ComplexT*)y;
-        const uint32_t N2 = N/2, N4 = N2/2, N8 = N4/2;
+        const int N2 = N/2, N4 = N2/2, N8 = N4/2;
         zfloat *ctab = get_ff_cos_tab(N);
         zfloat *stab = get_ff_sin_tab(N);
         
         cmplxT<T> *p, *q, tw, sum, diff;
         T tw1, tw2;
         
-        if (x != y) memcpy(y, x, N * sizeof(T));
+        if (x != y) {
+            memcpy(y, x, (forward)? (N * sizeof(T)) : ((N2+1) * sizeof(cmplxT<T>)));
+        }
         if (forward) {
-            cmplx_fft(yp, yp, N2, forward);
+            cmplx_fft(yp, yp, N2, true);
+            T1 scv = 0.5;
+            cmplxT<T> *yb = yp, *ye = &yp[N];
+            if (do_scale) scv *= 1./(T1)N2;
+            while (yb != ye) *yb++ *= scv;
         }
         
         // Shamelessly borrowed from the Source: http://www.katjaas.nl/realFFT/realFFT2.html
@@ -137,25 +144,24 @@ public:
         p->re *=  2;
         p->im *= -2;
         
-        if (forward) {
-            T1 scv = 0.55;
+        if (!forward)  {
+            cmplx_fft(yp, yp, N2, false);
+            T1 scv = 0.5;
+            T *ye = &y[N];
             if (do_scale) scv *= 1./(T1)N;
-            T *xi = &y[0], *xe = &y[N];
-            
-            while (xi < xe) *xi++ *= scv;
-        } else {
-            cmplx_fft(yp, yp, N2, forward);
+            while (y != ye) *y++ *= scv;
         }
     }
 
-    void cmplx_fft(const cmplxT<T> *in, cmplxT<T> *out, int NC, bool forward, bool scale = false)
+    void cmplx_fft(const cmplxT<T> *in, cmplxT<T> *out, int NC, bool forward, bool do_scale = false)
     {
-        if (forward) 
+        if (forward)
         {
-            if (!fwd.initialized())
+            if (!fwd.initialized()) {
                 fwd.init(NC, false);
+            }
             
-            memcpy(out, in, sizeof(cmplxT<T>) * (NC + 1));
+            memcpy(out, in, sizeof(T) * (NC));
             
             if constexpr(NEON_ASM_COND)  {
                 ff_fft_permute_neon(&fwd, (FFTComplex*)out);
@@ -164,12 +170,13 @@ public:
                 fwd.permute(out);
                 fwd.calc(out, true);
             }
-        } else 
+        } else
         {
-            if (!rev.initialized())
+            if (!rev.initialized()) {
                 rev.init(NC, true);
+            }
             
-            memcpy(out, in, sizeof(cmplxT<T>) * (NC + 1));
+            memcpy(out, in, sizeof(cmplxT<T>) * (NC+1));
             
             if constexpr(NEON_ASM_COND)  {
                 ff_fft_permute_neon(&rev, (FFTComplex*)out);
@@ -185,7 +192,7 @@ protected:
     
     class FFTContext
     {
-        enum fft_permutation_type 
+        enum fft_permutation_type
         {
             FF_FFT_PERM_DEFAULT,
             FF_FFT_PERM_SWAP_LSBS,
@@ -248,7 +255,7 @@ protected:
                 {
                     for (int k=0; k < 16; k++)
                         _revtab[-split_radix_permutation(i + k, n, _inverse) & (n - 1)] = i + avx_tab[k];
-                } else 
+                } else
                 {
                     for (int k=0; k < 16; k++)
                     {
@@ -327,7 +334,7 @@ protected:
             _initialized = true;
             return 0;
          fail:
-            if (_revtab) 
+            if (_revtab)
                 callocT_free(_revtab);
             _revtab = NULL;
             if (_tmpbuf)
@@ -544,138 +551,3 @@ protected:
     
     FFTContext  fwd, rev;
 };
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-static zfloat * ff_cos_tabs[18] = {
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    ff_cos_16,
-    ff_cos_32,
-    ff_cos_64,
-    ff_cos_128,
-    ff_cos_256,
-    ff_cos_512,
-    ff_cos_1024,
-    ff_cos_2048,
-    ff_cos_4096,
-    ff_cos_8192,
-    ff_cos_16384,
-    ff_cos_32768,
-    ff_cos_65536,
-    ff_cos_131072,
-};
-
-static zfloat * ff_sin_tabs[18] = {
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    ff_sin_16,
-    ff_sin_32,
-    ff_sin_64,
-    ff_sin_128,
-    ff_sin_256,
-    ff_sin_512,
-    ff_sin_1024,
-    ff_sin_2048,
-    ff_sin_4096,
-    ff_sin_8192,
-    ff_sin_16384,
-    ff_sin_32768,
-    ff_sin_65536,
-    ff_sin_131072,
-};
-
-static zfloat * get_ff_cos_tab(int size) {
-    int index = floorlog2(size);
-    return ff_cos_tabs[index];
-}
-
-static zfloat *get_ff_sin_tab(int size) {
-    int index = floorlog2(size);
-    return ff_sin_tabs[index];
-}
-
-static void init_ff_cosin_tabs(int index)
-{
-    int i;
-    int m = 1<<index;
-    zfloat freq = 2*M_PI/(zfloat)m;
-    zfloat *ctab = ff_cos_tabs[index];
-    zfloat *stab = ff_sin_tabs[index];
-    for(i=0; i<=m/4; i++) {
-        ctab[i] = cos(i*freq);
-        stab[i] = sin(i*freq);
-    }
-    for(i=1; i<m/4; i++) {
-        ctab[m/2-i] = ctab[i];
-        stab[m/2-i] = stab[i];
-    }
-}
-
-
-#define INIT_FF_COSIN_TABS_FUNC(index, size)   \
-static void init_ff_cosin_tabs_ ##size (void)  \
-{                                              \
-    init_ff_cosin_tabs(index);                 \
-}
-
-INIT_FF_COSIN_TABS_FUNC(4, 16)
-INIT_FF_COSIN_TABS_FUNC(5, 32)
-INIT_FF_COSIN_TABS_FUNC(6, 64)
-INIT_FF_COSIN_TABS_FUNC(7, 128)
-INIT_FF_COSIN_TABS_FUNC(8, 256)
-INIT_FF_COSIN_TABS_FUNC(9, 512)
-INIT_FF_COSIN_TABS_FUNC(10, 1024)
-INIT_FF_COSIN_TABS_FUNC(11, 2048)
-INIT_FF_COSIN_TABS_FUNC(12, 4096)
-INIT_FF_COSIN_TABS_FUNC(13, 8192)
-INIT_FF_COSIN_TABS_FUNC(14, 16384)
-INIT_FF_COSIN_TABS_FUNC(15, 32768)
-INIT_FF_COSIN_TABS_FUNC(16, 65536)
-INIT_FF_COSIN_TABS_FUNC(17, 131072)
-
-typedef struct CoSinTabsInitOnce {
-    void (*func)(void);
-    bool loaded;
-} CoSinTabsInitOnce;
-
-static CoSinTabsInitOnce cosin_tabs_init_once[18] = {
-    { NULL, false },
-    { NULL, false },
-    { NULL, false },
-    { NULL, false },
-    { init_ff_cosin_tabs_16, false },
-    { init_ff_cosin_tabs_32, false },
-    { init_ff_cosin_tabs_64, false },
-    { init_ff_cosin_tabs_128, false },
-    { init_ff_cosin_tabs_256, false },
-    { init_ff_cosin_tabs_512, false },
-    { init_ff_cosin_tabs_1024, false },
-    { init_ff_cosin_tabs_2048, false },
-    { init_ff_cosin_tabs_4096, false },
-    { init_ff_cosin_tabs_8192, false },
-    { init_ff_cosin_tabs_16384, false },
-    { init_ff_cosin_tabs_32768, false },
-    { init_ff_cosin_tabs_65536, false },
-    { init_ff_cosin_tabs_131072, false },
-};
-
-static inline void ff_init_ff_cosin_tabs(int index)
-{
-    if (!cosin_tabs_init_once[index].loaded) {
-        //LOG("generating sin + cos tabs for %d", 1<<index);
-        cosin_tabs_init_once[index].func();
-        cosin_tabs_init_once[index].loaded = true;
-    }
-}
-
-
-#ifdef __cplusplus
-}
-#endif
