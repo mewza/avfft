@@ -1,4 +1,4 @@
-/** AVFFT v1.51 C++ wrapper class written by Dmitry Boldyrev
+/** AVFFT v1.71 C++ wrapper class written by Dmitry Boldyrev
  **
  **  GITHUB: https://github.com/mewza
  **  Email: subband@protonmail.com
