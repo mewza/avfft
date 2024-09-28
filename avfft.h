@@ -1,8 +1,8 @@
-/** AVFFT v1.71 C++ wrapper class written by Dmitry Boldyrev
+/** AVFFT v1.75 C++ wrapper class written by Dmitry Boldyrev
  **
  **  File: avfft.h
  **  Main AVFFT class definition. You only need to include this file into your project
- **  for AVFFT function, and you also need to add the .S file into your XCode project 
+ **  for AVFFT function, and you also need to add the .S file into your XCode project
  **  to be compiled-in.
  **
  **  This FFT wrapper is based on AV MPEG AUDIO source code, so I am not really
@@ -29,7 +29,7 @@ typedef cmplxT<zfloat> FFTComplex;
 
 #define DEF_ALIGNED(n,t,v) extern t __attribute__ ((aligned (n))) v
 #define DEF_COSINTABLE(size) DEF_ALIGNED(32, zfloat, ff_cos_##size)[size/2]; \
-                         DEF_ALIGNED(32, zfloat, ff_sin_##size)[size/2]
+                             DEF_ALIGNED(32, zfloat, ff_sin_##size)[size/2]
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,28 +73,38 @@ static inline constexpr unsigned int floorlog2(unsigned int x) {
 #define M_TWOPI (M_PI * 2.)
 #define NEON_ASM_COND (USE_NEON && std::is_same_v<T, float>)
 
-template <typename T>
+template <typename T, int N>
 class AVFFT
 {
     using T1 = SimdBase<T>;
     typedef cmplxT<T> ComplexT;
     
+    static const int N2 = N/2;
+    static const int N4 = N2/2;
+    static const int N8 = N4/2;
+
 public:
     
-    void real_fft(const T* x, cmplxT<T>* y, int N, bool do_scale = false)
+    AVFFT() {
+        if (!fwd.initialized())
+            fwd.init(false);
+        if (!rev.initialized())
+            rev.init(true);
+    }
+    
+   void real_fft(const T* x, cmplxT<T>* y, bool do_scale = false)
     {
-        rfft(x, (T*)y, N, true, do_scale);
+        real_fft(x, (T*)y, true, do_scale);
     }
 
-    void real_ifft(const cmplxT<T>* x, T* y, int N, bool do_scale = false)
+    void real_ifft(const cmplxT<T>* x, T* y, bool do_scale = false)
     {
-        rfft((T*)x, y, N, false, do_scale);
+        real_fft((T*)x, y, false, do_scale);
     }
 
-    void rfft(const T* x, T* y, int N, bool forward, bool do_scale = false)
+    void real_fft(const T* x, T* y, bool forward, bool do_scale = false)
     {
         ComplexT *yp = (ComplexT*)y;
-        const int N2 = N/2, N4 = N2/2, N8 = N4/2;
         zfloat *ctab = get_ff_cos_tab(N);
         zfloat *stab = get_ff_sin_tab(N);
         
@@ -102,13 +112,13 @@ public:
         T tw1, tw2;
         
         if (x != y) {
-            memcpy(y, x, (forward)? (N * sizeof(T)) : ((N2+1) * sizeof(cmplxT<T>)));
+            memcpy(y, x, (forward)? (N * sizeof(T)) : ((N2 + 1) * sizeof(cmplxT<T>)));
         }
         if (forward) {
-            cmplx_fft(yp, yp, N2, true);
+            cmplx_fft(yp, yp, true);
             T1 scv = 0.5;
             cmplxT<T> *yb = yp, *ye = &yp[N];
-            if (do_scale) scv *= 1./(T1)N2;
+            if (do_scale) scv *= 1./(T1)N;
             while (yb != ye) *yb++ *= scv;
         }
         
@@ -145,23 +155,21 @@ public:
         p->im *= -2;
         
         if (!forward)  {
-            cmplx_fft(yp, yp, N2, false);
-            T1 scv = 0.5;
+            cmplx_fft(yp, yp, false);
+            
             T *ye = &y[N];
-            if (do_scale) scv *= 1./(T1)N;
-            while (y != ye) *y++ *= scv;
+            if (do_scale) {
+                T1 scv = 1./(T1)N;
+                while (y != ye) *y++ *= scv;
+            }
         }
     }
 
-    void cmplx_fft(const cmplxT<T> *in, cmplxT<T> *out, int NC, bool forward, bool do_scale = false)
+    void cmplx_fft(const cmplxT<T> *in, cmplxT<T> *out, bool forward)
     {
         if (forward)
         {
-            if (!fwd.initialized()) {
-                fwd.init(NC, false);
-            }
-            
-            memcpy(out, in, sizeof(T) * (NC));
+            memcpy(out, in, sizeof(T) * (N2));
             
             if constexpr(NEON_ASM_COND)  {
                 ff_fft_permute_neon(&fwd, (FFTComplex*)out);
@@ -172,11 +180,7 @@ public:
             }
         } else
         {
-            if (!rev.initialized()) {
-                rev.init(NC, true);
-            }
-            
-            memcpy(out, in, sizeof(cmplxT<T>) * (NC+1));
+            memcpy(out, in, sizeof(cmplxT<T>) * (N2 + 1));
             
             if constexpr(NEON_ASM_COND)  {
                 ff_fft_permute_neon(&rev, (FFTComplex*)out);
@@ -267,12 +271,12 @@ protected:
             }
         }
         
-        int init(int N, bool inverse)
+        int init(bool inverse)
         {
             int i, j, n;
 
-            _mdct_bits = floorlog2(N);
-            _mdct_size = N;
+            _mdct_bits = floorlog2(N2);
+            _mdct_size = N2;
         
             _revtab = NULL;
 
