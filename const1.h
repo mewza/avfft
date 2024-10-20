@@ -789,3 +789,119 @@ static inline void callocT_free( void *p )
 
 #define THROW_MEM(cond)  if (cond) throw (Converror (Converror::MEM_ALLOC));
 
+
+
+inline float64x2x4_t vaddq_f64_4(float64x2x4_t a, float64x2x4_t b) {
+    float64x2x4_t sum;
+    sum.val[0] = vaddq_f64(a.val[0], b.val[0]);
+    sum.val[1] = vaddq_f64(a.val[1], b.val[1]);
+    sum.val[2] = vaddq_f64(a.val[2], b.val[2]);
+    sum.val[3] = vaddq_f64(a.val[3], b.val[3]);
+    return sum;
+}
+
+inline float64x2x4_t vsubq_f64_4(float64x2x4_t a, float64x2x4_t b) {
+    float64x2x4_t sum;
+    sum.val[0] = vsubq_f64(a.val[0], b.val[0]);
+    sum.val[1] = vsubq_f64(a.val[1], b.val[1]);
+    sum.val[2] = vsubq_f64(a.val[2], b.val[2]);
+    sum.val[3] = vsubq_f64(a.val[3], b.val[3]);
+    return sum;
+}
+
+inline float64x2x4_t vmulq_f64_4(float64x2x4_t a, float64x2x4_t b) {
+    float64x2x4_t sum;
+    sum.val[0] = vmulq_f64(a.val[0], b.val[0]);
+    sum.val[1] = vmulq_f64(a.val[1], b.val[1]);
+    sum.val[2] = vmulq_f64(a.val[2], b.val[2]);
+    sum.val[3] = vmulq_f64(a.val[3], b.val[3]);
+    return sum;
+}
+
+inline float64x2x4_t vmlaq_f64_4(float64x2x4_t a, float64x2x4_t b, float64x2x4_t c) {
+    float64x2x4_t sum;
+    sum.val[0] = vmlaq_f64(a.val[0], b.val[0], c.val[0]);
+    sum.val[1] = vmlaq_f64(a.val[1], b.val[1], c.val[1]);
+    sum.val[2] = vmlaq_f64(a.val[2], b.val[2], c.val[2]);
+    sum.val[3] = vmlaq_f64(a.val[3], b.val[3], c.val[3]);
+    return sum;
+}
+
+inline float64x2x4_t vnegq_f64_4(float64x2x4_t a) {
+    a.val[0] = vnegq_f64(a.val[0]);
+    a.val[1] = vnegq_f64(a.val[1]);
+    a.val[2] = vnegq_f64(a.val[2]);
+    a.val[3] = vnegq_f64(a.val[3]);
+    return a;
+}
+
+
+inline float64x2x4_t vdupq_f64_4(double x) {
+    float64x2_t val = vdupq_n_f64(x);
+    float64x2x4_t sum;
+    sum.val[0] = val;
+    sum.val[1] = val;
+    sum.val[2] = val;
+    sum.val[3] = val;
+    return sum;
+}
+
+
+
+inline float32x4x2_t vaddq_f32_4(float32x4x2_t a, float32x4x2_t b) {
+    float32x4x2_t sum;
+    sum.val[0] = vaddq_f32(a.val[0], b.val[0]);
+    sum.val[1] = vaddq_f32(a.val[1], b.val[1]);
+    sum.val[2] = vaddq_f32(a.val[2], b.val[2]);
+    sum.val[3] = vaddq_f32(a.val[3], b.val[3]);
+    return sum;
+}
+
+inline float32x4x2_t vsubq_f32_4(float32x4x2_t a, float32x4x2_t b) {
+    float32x4x2_t sum;
+    sum.val[0] = vsubq_f32(a.val[0], b.val[0]);
+    sum.val[1] = vsubq_f32(a.val[1], b.val[1]);
+    sum.val[2] = vsubq_f32(a.val[2], b.val[2]);
+    sum.val[3] = vsubq_f32(a.val[3], b.val[3]);
+    return sum;
+}
+
+inline float32x4x2_t vmulq_f32_4(float32x4x2_t a, float32x4x2_t b) {
+    float32x4x2_t sum;
+    sum.val[0] = vmulq_f32(a.val[0], b.val[0]);
+    sum.val[1] = vmulq_f32(a.val[1], b.val[1]);
+    sum.val[2] = vmulq_f32(a.val[2], b.val[2]);
+    sum.val[3] = vmulq_f32(a.val[3], b.val[3]);
+    return sum;
+}
+
+inline float32x4x2_t vmlaq_f32_4(float32x4x2_t a, float32x4x2_t b, float32x4x2_t c) {
+    float32x4x2_t sum;
+    sum.val[0] = vmlaq_f32(a.val[0], b.val[0], c.val[0]);
+    sum.val[1] = vmlaq_f32(a.val[1], b.val[1], c.val[1]);
+    sum.val[2] = vmlaq_f32(a.val[2], b.val[2], c.val[2]);
+    sum.val[3] = vmlaq_f32(a.val[3], b.val[3], c.val[3]);
+    return sum;
+}
+
+inline float32x4x2_t vnegq_f32_4(float32x4x2_t a) {
+    a.val[0] = vnegq_f32(a.val[0]);
+    a.val[1] = vnegq_f32(a.val[1]);
+    a.val[2] = vnegq_f32(a.val[2]);
+    a.val[3] = vnegq_f32(a.val[3]);
+    return a;
+}
+
+inline float32x4x2_t vdupq_f32_4(float x) {
+    float32x4_t val = vdupq_n_f32(x);
+    float32x4x2_t sum;
+    sum.val[0] = val;
+    sum.val[1] = val;
+    sum.val[2] = val;
+    sum.val[3] = val;
+    return sum;
+}
+
+
+
+
